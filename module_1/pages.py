@@ -25,7 +25,7 @@ PROFILE = {
     ),
     "bio_master": "Currently pursuing a Master's in Data Science",
     "email": "adeoluo@hotmail.com",
-    "linkedin_url": "http://www.linkedin.com/in/adeolu-ogunnoiki",
+    "linkedin_url": "https://www.linkedin.com/in/adeolu-ogunnoiki",
     "github_url": "https://github.com/adeoluo",
 }
 
