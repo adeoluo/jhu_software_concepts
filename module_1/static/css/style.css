@@ -1,0 +1,5 @@
+/* Baseline reset; styling will be layered on in a later commit. */
+body {
+  font-family: sans-serif;
+  margin: 0;
+}
