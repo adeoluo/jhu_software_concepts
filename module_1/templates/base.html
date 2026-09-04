@@ -8,6 +8,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   </head>
   <body>
+    <!-- Shared header and primary navigation for every page. -->
+    <header>
+      <a href="{{ url_for('pages.home') }}">{{ profile.name }}</a>
+      <nav aria-label="Primary navigation">
+        <a href="{{ url_for('pages.home') }}" class="{% if active_page == 'home' %}active{% endif %}">Home</a>
+        <a href="{{ url_for('pages.projects') }}" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a>
+      </nav>
+    </header>
     <!-- Child templates supply page-specific content here. -->
     <main>
       {% block content %}{% endblock %}
