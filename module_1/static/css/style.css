@@ -271,6 +271,11 @@ h2 {
     align-self: flex-end;
   }
 
+  .site-footer {
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
   .intro {
     gap: 38px;
     grid-template-columns: 1fr;
