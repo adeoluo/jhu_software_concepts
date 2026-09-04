@@ -3,12 +3,16 @@
 {% block title %}{{ profile.name }} | Projects{% endblock %}
 
 {% block content %}
-<section>
+<section class="page-content projects-page">
+  <p class="eyebrow">Portfolio</p>
   <h1>Projects</h1>
-  <article>
-    <h2>{{ project.title }}</h2>
+  <article class="project">
+    <p class="project-number">01</p>
+    <div>
+      <h2>{{ project.title }}</h2>
     <p>{{ project.details }}</p>
-    <a href="{{ project.github_url }}" target="_blank" rel="noreferrer">View Module 1 on GitHub</a>
+      <a class="text-link" href="{{ project.github_url }}" target="_blank" rel="noreferrer">View Module 1 on GitHub</a>
+    </div>
   </article>
 </section>
 {% endblock %}

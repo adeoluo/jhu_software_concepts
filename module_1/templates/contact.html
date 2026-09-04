@@ -3,9 +3,18 @@
 {% block title %}{{ profile.name }} | Contact{% endblock %}
 
 {% block content %}
-<section>
-  <h1>Contact</h1>
-  <p>Email: <a href="mailto:{{ profile.email }}">{{ profile.email }}</a></p>
-  <p>LinkedIn: <a href="{{ profile.linkedin_url }}" target="_blank" rel="noreferrer">{{ profile.linkedin_url }}</a></p>
+<section class="page-content" aria-labelledby="contact-heading">
+  <p class="eyebrow">Contact</p>
+  <h1 id="contact-heading">Let's connect.</h1>
+  <div class="contact-list">
+    <div>
+      <h2>Email</h2>
+      <a href="mailto:{{ profile.email }}">{{ profile.email }}</a>
+    </div>
+    <div>
+      <h2>LinkedIn</h2>
+      <a href="{{ profile.linkedin_url }}" target="_blank" rel="noreferrer">{{ profile.linkedin_url }}</a>
+    </div>
+  </div>
 </section>
 {% endblock %}

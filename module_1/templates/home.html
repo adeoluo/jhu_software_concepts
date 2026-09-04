@@ -5,19 +5,21 @@
 {% block content %}
 <section class="intro">
   <div class="intro-copy">
+    <p class="eyebrow">Portfolio</p>
     <h1>{{ profile.name }}</h1>
-    <p>{{ profile.position }}</p>
-    <section>
+    <p class="position">{{ profile.position }}</p>
+    <section class="bio-section">
       <h2>About Me</h2>
-      <p>{{ profile.bio }}</p>
-      <p>{{ profile.bio_cat }}</p>
+      <p class="bio">{{ profile.bio }}</p>
+      <p class="bio">{{ profile.bio_cat }}</p>
     </section>
-    <section>
+    <section class="bio-section">
       <h2>Education</h2>
-      <p>{{ profile.bio_detail }}</p>
-      <p>{{ profile.bio_master }}</p>
+      <p class="bio">{{ profile.bio_detail }}</p>
+      <p class="bio">{{ profile.bio_master }}</p>
     </section>
+    <a class="text-link" href="{{ url_for('pages.contact') }}">Get in touch</a>
   </div>
-  <img src="{{ url_for('static', filename='images/picture.JPG') }}" alt="Portrait of {{ profile.name }}">
+  <img class="profile-photo" src="{{ url_for('static', filename='images/picture.JPG') }}" alt="Portrait of {{ profile.name }}">
 </section>
 {% endblock %}

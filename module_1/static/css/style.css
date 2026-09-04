@@ -1,16 +1,279 @@
-/* Baseline reset; styling will be layered on in a later commit. */
+/* Shared colors and typography. */
+:root {
+  --ink: #181818;
+  --muted: #5e5e5e;
+  --paper: #f2f2f0;
+  --accent: #303030;
+  --link-hover: #7a2e1d;
+  --line: #b8b8b5;
+  --nav-bg: #181818;
+  --nav-text: #f2f2f0;
+  --nav-hover: #e0876a;
+  --sans: "Times New Roman", Times, serif;
+  --serif: "Times New Roman", Times, serif;
+  --mono: "Times New Roman", Times, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: sans-serif;
+  background-color: var(--paper);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--sans);
+  height: 100vh;
+  line-height: 1.6;
   margin: 0;
+  overflow: hidden;
 }
 
-/* Place the biography left of the portrait on wider screens. */
+main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+a {
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.site-header {
+  align-items: center;
+  background-color: var(--nav-bg);
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  width: 100%;
+}
+
+.site-header-inner {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  max-width: 1120px;
+  min-height: 84px;
+  padding: 16px 28px;
+  width: 100%;
+}
+
+.site-name {
+  color: var(--nav-text);
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-name:hover,
+.site-name:focus-visible {
+  color: var(--nav-hover);
+}
+
+.navigation {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navigation a {
+  color: var(--nav-text);
+  display: inline-block;
+  font-size: 0.95rem;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.navigation a:hover,
+.navigation a:focus-visible {
+  color: var(--nav-hover);
+}
+
+.navigation a.active {
+  background: var(--link-hover);
+  color: var(--nav-text);
+}
+
+.navigation a.active:hover,
+.navigation a.active:focus-visible {
+  box-shadow: inset 0 -3px 0 var(--nav-hover);
+}
+
+.intro,
+.page-content {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 88px 28px;
+  width: 100%;
+}
+
 .intro {
+  align-items: center;
   display: grid;
-  gap: 32px;
-  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  gap: 96px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
 }
 
-.intro img {
-  max-width: 100%;
+.eyebrow,
+.project-number {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--serif);
+  line-height: 0.98;
+}
+
+h1 {
+  font-size: 3.75rem;
+  margin-bottom: 12px;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.position {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 28px;
+}
+
+.bio,
+.project p {
+  color: var(--muted);
+  font-size: 1.08rem;
+  max-width: 610px;
+}
+
+.bio-section {
+  border-left: 3px solid var(--link-hover);
+  margin-bottom: 24px;
+  padding-left: 16px;
+}
+
+.bio-section h2 {
+  color: var(--link-hover);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.bio-section .bio {
+  color: var(--ink);
+}
+
+.bio-section .bio:last-child {
+  margin-bottom: 0;
+}
+
+.profile-photo {
+  background: var(--paper);
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.text-link,
+.contact-list a {
+  color: var(--accent);
+  font-weight: 700;
+  text-underline-offset: 4px;
+  text-decoration: none;
+}
+
+.contact-list a {
+  font-size: 1.15rem;
+}
+
+.text-link:hover,
+.text-link:focus-visible,
+.contact-list a:hover,
+.contact-list a:focus-visible {
+  color: var(--link-hover);
+}
+
+.project {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 56px minmax(0, 1fr);
+  max-width: 760px;
+  padding: 30px 0;
+}
+
+.contact-list {
+  display: grid;
+  gap: 0;
+  max-width: 720px;
+}
+
+.contact-list div {
+  border-top: 1px solid var(--line);
+  padding: 22px 0;
+}
+
+.contact-list h2 {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 24px 28px;
+  width: 100%;
+}
+
+@media (max-width: 680px) {
+  .site-header-inner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .intro {
+    gap: 38px;
+    grid-template-columns: 1fr;
+    padding-top: 56px;
+  }
+
+  h1 {
+    font-size: 2.75rem;
+  }
+
+  .profile-photo {
+    max-width: 400px;
+  }
 }

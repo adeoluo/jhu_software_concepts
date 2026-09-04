@@ -9,17 +9,22 @@
   </head>
   <body>
     <!-- Shared header and primary navigation for every page. -->
-    <header>
-      <a href="{{ url_for('pages.home') }}">{{ profile.name }}</a>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="site-name" href="{{ url_for('pages.home') }}">{{ profile.name }}</a>
       <nav aria-label="Primary navigation">
-        <a href="{{ url_for('pages.home') }}" class="{% if active_page == 'home' %}active{% endif %}">Home</a>
-        <a href="{{ url_for('pages.projects') }}" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a>
-        <a href="{{ url_for('pages.contact') }}" class="{% if active_page == 'contact' %}active{% endif %}">Contact</a>
+          <ul class="navigation">
+            <li><a href="{{ url_for('pages.home') }}" class="{% if active_page == 'home' %}active{% endif %}">Home</a></li>
+            <li><a href="{{ url_for('pages.projects') }}" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a></li>
+            <li><a href="{{ url_for('pages.contact') }}" class="{% if active_page == 'contact' %}active{% endif %}">Contact</a></li>
+          </ul>
       </nav>
+      </div>
     </header>
     <!-- Child templates supply page-specific content here. -->
     <main>
       {% block content %}{% endblock %}
     </main>
+    <footer class="site-footer">EN.605.256.82.FA26 Modern Software Concepts in Python</footer>
   </body>
 </html>
