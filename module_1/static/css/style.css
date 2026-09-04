@@ -263,6 +263,10 @@ h2 {
     gap: 12px;
   }
 
+  .site-name {
+    align-self: center;
+  }
+
   .site-header-inner nav {
     align-self: flex-end;
   }
