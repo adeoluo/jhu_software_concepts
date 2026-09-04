@@ -276,6 +276,11 @@ h2 {
     white-space: nowrap;
   }
 
+  .contact-list a {
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
   .intro {
     gap: 38px;
     grid-template-columns: 1fr;
