@@ -14,6 +14,7 @@
       <nav aria-label="Primary navigation">
         <a href="{{ url_for('pages.home') }}" class="{% if active_page == 'home' %}active{% endif %}">Home</a>
         <a href="{{ url_for('pages.projects') }}" class="{% if active_page == 'projects' %}active{% endif %}">Projects</a>
+        <a href="{{ url_for('pages.contact') }}" class="{% if active_page == 'contact' %}active{% endif %}">Contact</a>
       </nav>
     </header>
     <!-- Child templates supply page-specific content here. -->

@@ -18,6 +18,8 @@ PROFILE = {
         "I enjoy learning, building impactful software, "
         "and playing football."
     ),
+    "email": "adeoluo@hotmail.com",
+    "linkedin_url": "http://www.linkedin.com/in/adeolu-ogunnoiki",
 }
 
 # Module 1 project information for the Projects page.
@@ -48,4 +50,12 @@ def projects():
         profile=PROFILE,
         project=MODULE_ONE_PROJECT,
         active_page="projects",
+    )
+
+
+@pages_blueprint.route("/contact")
+def contact():
+    """Render the contact-information page at ``/contact``."""
+    return render_template(
+        "contact.html", profile=PROFILE, active_page="contact"
     )
