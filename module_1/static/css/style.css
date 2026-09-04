@@ -263,6 +263,10 @@ h2 {
     gap: 12px;
   }
 
+  .site-header-inner nav {
+    align-self: flex-end;
+  }
+
   .intro {
     gap: 38px;
     grid-template-columns: 1fr;
