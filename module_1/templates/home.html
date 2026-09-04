@@ -3,9 +3,21 @@
 {% block title %}{{ profile.name }} | Home{% endblock %}
 
 {% block content %}
-<section>
-  <h1>{{ profile.name }}</h1>
-  <p>{{ profile.position }}</p>
-  <p>{{ profile.bio }}</p>
+<section class="intro">
+  <div class="intro-copy">
+    <h1>{{ profile.name }}</h1>
+    <p>{{ profile.position }}</p>
+    <section>
+      <h2>About Me</h2>
+      <p>{{ profile.bio }}</p>
+      <p>{{ profile.bio_cat }}</p>
+    </section>
+    <section>
+      <h2>Education</h2>
+      <p>{{ profile.bio_detail }}</p>
+      <p>{{ profile.bio_master }}</p>
+    </section>
+  </div>
+  <img src="{{ url_for('static', filename='images/picture.JPG') }}" alt="Portrait of {{ profile.name }}">
 </section>
 {% endblock %}

@@ -3,3 +3,14 @@ body {
   font-family: sans-serif;
   margin: 0;
 }
+
+/* Place the biography left of the portrait on wider screens. */
+.intro {
+  display: grid;
+  gap: 32px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.intro img {
+  max-width: 100%;
+}

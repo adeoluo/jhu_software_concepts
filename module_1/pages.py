@@ -18,6 +18,12 @@ PROFILE = {
         "I enjoy learning, building impactful software, "
         "and playing football."
     ),
+    "bio_cat": "I also have a cat named Nalaa which I love very much.",
+    "bio_detail": (
+        "Bachelor of Computer Science with Distinction "
+        "(specialization in Data Science)"
+    ),
+    "bio_master": "Currently pursuing a Master's in Data Science",
     "email": "adeoluo@hotmail.com",
     "linkedin_url": "http://www.linkedin.com/in/adeolu-ogunnoiki",
 }
