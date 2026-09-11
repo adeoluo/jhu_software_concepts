@@ -27,8 +27,19 @@ degree program + university names. It appends two new fields to each row:
 ## CLI mode (no server)
 
 ```bash
-python app.py --file cleaned_applicant_data.json --stdout > full_out.jsonl
+python app.py \
+   --file ../cleaned_applicant_data.json \
+   --out ../llm_standardization_progress.jsonl \
+   --append \
+   --final-json ../llm_extend_applicant_data.json
 ```
+
+CLI mode initializes the local model on the first row. The JSON Lines output is
+flushed after each row so an interrupted run can resume with `--append`; the
+completed JSON array is written by `--final-json`. `--workers N` controls the
+number of CPU worker processes and defaults to the available CPU count. Use
+`--workers 1` or `--workers 2` if memory is limited because each worker can
+load its own model instance. `--stdout` remains available for small tests.
 
 ## Config (env vars)
 

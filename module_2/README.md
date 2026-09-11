@@ -9,6 +9,7 @@ Adeolu Ogunnoiki (JHED: aogunno1, aogunno1@jh.edu)
 - **Module:** Module 2 — Web Scraping Assignment
 - **Course:** Modern Software Concepts in Python, EN.605.256.82.FA26
 - **Due:** September 13, 2026 at 11:59 PM
+- **GitHub repository SSH URL:** `git@github.com:adeoluo/jhu_software_concepts.git`
 
 ## Approach
 
@@ -20,7 +21,7 @@ Each captured page is parsed by `scrape.py` with BeautifulSoup: `_extract_rows_f
 
 `clean.py` then produces a deterministic cleaned copy: `_normalize_text` collapses whitespace and standardizes missing values to `""`, and `_normalize_status` maps status synonyms (e.g., "admitted" → "Accepted") to a consistent vocabulary, while `raw_program`/`raw_text` are always preserved unmodified alongside the cleaned fields for traceability.
 
-Finally, the supplied `llm_hosting/` project (TinyLlama via `llama-cpp-python`, with `canon_universities.txt`/`canon_programs.txt` canonical lists and difflib fuzzy matching) standardizes `program`/`university` into `llm-generated-program`/`llm-generated-university`, added on top of the cleaned row without altering the original fields. `llm_hosting/app.py`'s CLI was extended (beyond the file as originally supplied) with `--out`, `--append`, and `--final-json` flags so that a 100,000-row LLM pass writes JSON Lines incrementally and can resume after an interruption instead of restarting from row 0; `_cli_process_file` counts completed lines in the existing output file and skips that many input rows before continuing. No changes were made to `canon_universities.txt`/`canon_programs.txt` beyond the versions supplied with the assignment.
+Finally, the supplied `llm_hosting/` project (TinyLlama via `llama-cpp-python`, with `canon_universities.txt`/`canon_programs.txt` canonical lists and difflib fuzzy matching) standardizes `program`/`university` into `llm-generated-program`/`llm-generated-university`, added on top of the cleaned row without altering the original fields. `llm_hosting/app.py`'s CLI was extended (beyond the file as originally supplied) with `--out`, `--append`, `--final-json`, and `--workers` flags so that a 100,000-row LLM pass writes JSON Lines incrementally, can resume after an interruption instead of restarting from row 0, and runs in parallel across CPU cores; `_cli_process_file` counts completed lines in the existing output file and skips that many input rows before continuing, and (when `--workers` > 1) distributes the remaining rows across a `concurrent.futures.ProcessPoolExecutor`, with each worker process lazily loading its own model instance. Results are written in the same order the rows were submitted, so the line-count-based resume logic stays correct even with parallel workers. No changes were made to `canon_universities.txt`/`canon_programs.txt` beyond the versions supplied with the assignment.
 
 ## Requirements
 
@@ -57,8 +58,8 @@ deactivate
 - `clean.py`: deterministic field normalization that preserves raw source text
 - `llm_hosting/`: supplied local LLM project, adapted to standardize both program and university
 - `robots_evidence.txt`: saved robots.txt evidence collected before applicant data
-- `screenshot.jpg`: visual evidence of the robots.txt review (browser screenshot of `thegradcafe.com/robots.txt`)
-- `RobotsTxT Screenshots.pdf`: additional visual evidence of the robots.txt review, same content as `screenshot.jpg`
+- `screenshot.jpg`: the specifically required rubric deliverable, a JPEG browser screenshot showing `thegradcafe.com/robots.txt`
+- `RobotsTxT Screenshots.pdf`: supplemental two-page PDF evidence showing the full robots.txt browser page; it is included in addition to, not instead of, the required `screenshot.jpg`
 
 ## Collection Workflow
 
@@ -67,6 +68,13 @@ First, save and review robots.txt before collecting applicant records:
 ```bash
 python3 scrape.py --check-robots --robots-output robots_evidence.txt
 ```
+
+The command records the robots.txt source URL, target path, UTC timestamp, user
+agent, allow/deny result, and then the fetched robots.txt body. The first four
+lines are project evidence metadata; the robots.txt content begins after that
+metadata. `screenshot.jpg` is the visual evidence required by the rubric. The
+supplemental `RobotsTxT Screenshots.pdf` contains the full-page, two-page browser
+evidence for easier review; the PDF does not replace the required JPG.
 
 Launch a separate Chrome instance with remote debugging and open the public survey page:
 
@@ -77,17 +85,70 @@ open -na "Google Chrome" --args \
   "https://www.thegradcafe.com/survey"
 ```
 
+This uses a separate Chrome profile so the remote-debugging session does not
+interfere with a normal browser session. In that window, complete any normal
+Cloudflare verification manually and wait for the public results table. The
+project does not automate or bypass verification. The capture scripts use
+Chrome's DevTools Protocol on port 9222 through `websocket-client`; Selenium is
+not used because the instructor's September 7, 2026 update reports a Selenium
+verification loop for this site.
+
 After completing any normal browser verification and confirming that the results table is visible, run:
 
 ```bash
 python3 auto_next_pages.py \
   --start-url "https://www.thegradcafe.com/survey" \
   --target-rows 100000 \
+  --output-dir data \
   --merged-output applicant_data.json
 ```
 
+The `data/`, `data/html/`, and `data/json/` directories are created
+automatically. The first page is saved as
+`data/html/gradcafe_page_1.html` and
+`data/json/applicant_data_page1.json`; later pages receive the next number.
+Each page is parsed, saved, and merged into `applicant_data.json` before the
+Next control is used again. Challenge, rate-limit, access-denied, and gateway
+error pages stop the run instead of being retried or bypassed.
+
 Temporary page HTML and page-level JSON are written under `data/html/` and `data/json/`. The merged dataset is rewritten after every successful page, so an interrupted run retains completed work. On restart, the helper loads existing page JSON and continues its page numbering.
 It reads the last saved HTML page's `Next` link and returns Chrome to that exact cursor, so resuming does not depend on which page the browser currently displays. A fresh output directory always begins at `--start-url`.
+
+Do not delete `data/`, `data/html/`, `data/json/`, or `applicant_data.json`
+during collection. To resume after a timeout or interruption, wait for Chrome
+to show the real results table and run the same command again. The script loads
+the highest saved page, its saved Next cursor, and the existing merged rows.
+Page-level files may contain a boundary overlap, but the merged output uses a
+composite key and must contain no duplicate keys. Check the checkpoint with:
+
+```bash
+python3 - <<'PY'
+import json
+from auto_next_pages import _record_key
+
+rows = json.load(open("applicant_data.json"))
+keys = [_record_key(row) for row in rows]
+print("rows:", len(rows))
+print("unique keys:", len(set(keys)))
+print("duplicates:", len(rows) - len(set(keys)))
+PY
+```
+
+The expected final value for `duplicates` is `0`.
+
+For a one-page capture or parser check, use the helper and parser directly:
+
+```bash
+python3 capture_chrome_html.py \
+  --url "https://www.thegradcafe.com/survey" \
+  --output data/html/validation_page.html
+python3 scrape.py \
+  --html-file data/html/validation_page.html \
+  --output data/json/validation_page.json
+```
+
+This optional check reads the current verified Chrome page without replacing the
+merged dataset. The normal 100,000-row workflow is `auto_next_pages.py` above.
 
 ## Cleaning and LLM Standardization
 
@@ -99,7 +160,20 @@ python3 clean.py \
   --output cleaned_applicant_data.json
 ```
 
-Run the supplied local LLM from its directory. Its CLI writes JSON Lines incrementally so partial progress survives interruption:
+Run this after the scrape is complete or after choosing the final collection
+checkpoint. It creates `cleaned_applicant_data.json`; it does not replace
+`applicant_data.json`. The cleaner preserves the original program and raw
+listing fields while normalizing whitespace, statuses, and missing values.
+
+Install the separate LLM dependencies from the `llm_hosting` subfolder:
+
+```bash
+cd llm_hosting
+python3 -m pip install -r requirements.txt
+cd ..
+```
+
+Run the supplied local LLM from its directory. Its CLI writes JSON Lines incrementally so partial progress survives interruption, and runs across all CPU cores by default:
 
 ```bash
 cd llm_hosting
@@ -110,7 +184,73 @@ python3 app.py \
   --final-json ../llm_extend_applicant_data.json
 ```
 
+Use `--workers N` to control parallelism explicitly (defaults to the number of CPU cores; pass `--workers 1` to disable parallelism).
+
+On the first LLM row, `_load_llm()` downloads the configured TinyLlama GGUF
+file from Hugging Face and initializes `llama-cpp-python`. The model is cached
+under `llm_hosting/models/`, which is excluded from Git because it is large and
+reproducible from the documented configuration. Each worker may load its own
+model instance, so use `--workers 1` or `--workers 2` if memory is limited.
+The `--append` JSONL checkpoint can be reused after an interruption, and
+`--final-json` is written when processing completes.
+
 Each standardized row retains the source fields and adds `llm-generated-program` and `llm-generated-university`.
+
+Validate the completed LLM output:
+
+```bash
+python3 - <<'PY'
+import json
+
+raw = json.load(open("applicant_data.json"))
+cleaned = json.load(open("cleaned_applicant_data.json"))
+extended = json.load(open("llm_extend_applicant_data.json"))
+print("raw:", len(raw))
+print("cleaned:", len(cleaned))
+print("extended:", len(extended))
+print("standardized fields present:", all(
+  "llm-generated-program" in row and "llm-generated-university" in row
+  for row in extended
+))
+PY
+```
+
+## Tests and Final Submission
+
+Run the tests and syntax checks before final submission:
+
+```bash
+python3 -m unittest -v test_project.py
+python3 -m py_compile scrape.py clean.py capture_chrome_html.py auto_next_pages.py llm_hosting/app.py
+```
+
+The Git repository also contains unrelated course files outside `module_2`, so
+scope Git commands explicitly to this project. From the repository root:
+
+```bash
+cd /Users/ade/Desktop/jhu_software_concepts
+git status --short module_2
+git add module_2/README.md module_2/auto_next_pages.py module_2/llm_hosting/README.md module_2/llm_hosting/app.py
+git diff --cached --check
+git commit -m "Document complete collection, cleaning, and LLM workflow"
+git push origin main
+```
+
+After the final datasets are complete, commit the generated deliverables as a
+separate checkpoint:
+
+```bash
+git add module_2/applicant_data.json module_2/cleaned_applicant_data.json module_2/llm_extend_applicant_data.json
+git commit -m "Add final scraped, cleaned, and standardized applicant data"
+git push origin main
+```
+
+For Canvas, create a zip of `module_2` containing the Python files, JSON
+deliverables, README, requirements files, `llm_hosting/`, robots evidence, and
+screenshot. Exclude `.venv/`, `__pycache__/`, `llm_hosting/models/`, and the
+temporary `data/` capture cache unless the instructor specifically requests
+generated capture files. Confirm the zip matches the final GitHub commit and
+submit the repository SSH URL separately.
 
 ## Data Fields
 

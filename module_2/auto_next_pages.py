@@ -27,6 +27,11 @@ BLOCK_MARKERS = (
     "too many requests",
     "cf-error-details",
     "cf-mitigated",
+    "gateway time-out",
+    "gateway timeout",
+    "error code 504",
+    "error code 502",
+    "error code 503",
 )
 
 
@@ -185,6 +190,13 @@ def _advance_to_next_page(websocket_url: str) -> None:
         )
         if state.get("url") != previous_url and state.get("ready") == "complete":
             return
+    # Distinguish a transient upstream error (e.g. Cloudflare 504) from a real navigation failure.
+    current_html = _read_current_html(websocket_url)
+    if _looks_blocked(current_html):
+        raise BlockedError(
+            "GradCafe returned a challenge/block/error page while navigating to the next page. "
+            "Collection stopped instead of retrying or bypassing the restriction."
+        )
     raise RuntimeError("Chrome did not finish navigating to the next results page.")
 
 

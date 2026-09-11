@@ -251,6 +251,15 @@ def _call_llm(program_text: str) -> Dict[str, str]:
     }
 
 
+def _standardize_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Standardize one row; top-level so it can run in a worker process."""
+    program_text = _standardization_input(row or {})
+    result = _call_llm(program_text)
+    row["llm-generated-program"] = result["standardized_program"]
+    row["llm-generated-university"] = result["standardized_university"]
+    return row
+
+
 def _normalize_input(payload: Any) -> List[Dict[str, Any]]:
     """Accept either a list of rows or {'rows': [...]}."""
     if isinstance(payload, list):
@@ -297,6 +306,7 @@ def _cli_process_file(
     append: bool,
     to_stdout: bool,
     final_json_path: str | None,
+    workers: int = 1,
 ) -> None:
     """Process a JSON file and write JSONL incrementally."""
     with open(in_path, "r", encoding="utf-8") as f:
@@ -313,17 +323,24 @@ def _cli_process_file(
         sink = open(out_path, mode, encoding="utf-8")
 
     assert sink is not None  # for type-checkers
+    remaining = rows[completed_rows:]
 
     try:
-        for row in rows[completed_rows:]:
-            program_text = _standardization_input(row or {})
-            result = _call_llm(program_text)
-            row["llm-generated-program"] = result["standardized_program"]
-            row["llm-generated-university"] = result["standardized_university"]
+        if workers > 1 and remaining:
+            import concurrent.futures
 
-            json.dump(row, sink, ensure_ascii=False)
-            sink.write("\n")
-            sink.flush()
+            with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+                # executor.map preserves input order, so line N still matches row N for resume.
+                for result_row in executor.map(_standardize_row, remaining, chunksize=4):
+                    json.dump(result_row, sink, ensure_ascii=False)
+                    sink.write("\n")
+                    sink.flush()
+        else:
+            for row in remaining:
+                result_row = _standardize_row(row)
+                json.dump(result_row, sink, ensure_ascii=False)
+                sink.write("\n")
+                sink.flush()
     finally:
         if sink is not sys.stdout:
             sink.close()
@@ -375,6 +392,12 @@ if __name__ == "__main__":
         default=None,
         help="After processing completes, convert the JSONL checkpoint to a valid JSON array at this path.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=os.cpu_count() or 1,
+        help="Number of worker processes for CLI mode (defaults to CPU core count). Use 1 to disable parallelism.",
+    )
     args = parser.parse_args()
 
     if args.serve or args.file is None:
@@ -387,4 +410,5 @@ if __name__ == "__main__":
             append=bool(args.append),
             to_stdout=bool(args.stdout),
             final_json_path=args.final_json,
+            workers=max(1, args.workers),
         )
