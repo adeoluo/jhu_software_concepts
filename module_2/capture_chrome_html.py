@@ -48,7 +48,7 @@ def _pick_target(targets, preferred_url: str):
 
 
 def _read_current_page_html(websocket_url: str) -> str:
-    ws = websocket.create_connection(websocket_url)
+    ws = websocket.create_connection(websocket_url, suppress_origin=True)
     try:
         ws.send(json.dumps({
             "id": 1,

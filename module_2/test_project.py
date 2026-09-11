@@ -1,5 +1,8 @@
 import unittest
+from unittest.mock import patch
 
+from auto_next_pages import _evaluate_js, _next_page_url_from_html
+from capture_chrome_html import _read_current_page_html
 from clean import clean_data
 from scrape import _extract_rows_from_saved_html, build_result_url, robots_allows
 
@@ -30,6 +33,34 @@ SAMPLE_HTML = """
 
 
 class ScrapeTests(unittest.TestCase):
+    @patch("auto_next_pages.websocket.create_connection")
+    def test_collector_connection_omits_origin_header(self, create_connection):
+        connection = create_connection.return_value
+        connection.recv.return_value = '{"id": 1, "result": {"result": {"value": 20}}}'
+
+        value = _evaluate_js("ws://localhost:9222/devtools/page/example", "document.querySelectorAll('tr').length")
+
+        self.assertEqual(value, 20)
+        create_connection.assert_called_once_with(
+            "ws://localhost:9222/devtools/page/example",
+            suppress_origin=True,
+        )
+        connection.close.assert_called_once_with()
+
+    @patch("capture_chrome_html.websocket.create_connection")
+    def test_chrome_connection_omits_origin_header(self, create_connection):
+        connection = create_connection.return_value
+        connection.recv.return_value = '{"id": 1, "result": {"result": {"value": "<html></html>"}}}'
+
+        html = _read_current_page_html("ws://localhost:9222/devtools/page/example")
+
+        self.assertEqual(html, "<html></html>")
+        create_connection.assert_called_once_with(
+            "ws://localhost:9222/devtools/page/example",
+            suppress_origin=True,
+        )
+        connection.close.assert_called_once_with()
+
     def test_parser_groups_table_subrows_into_applicants(self):
         rows = _extract_rows_from_saved_html(SAMPLE_HTML)
 
@@ -65,6 +96,14 @@ class ScrapeTests(unittest.TestCase):
 
         self.assertEqual(cleaned[0]["program"], "CS")
         self.assertEqual(cleaned[0]["raw_text"], "original row")
+
+    def test_next_page_url_ignores_previous_link(self):
+        html = """
+        <a href="/survey?cursor=previous">Previous</a>
+        <a href="/survey?cursor=next">Next</a>
+        """
+
+        self.assertEqual(_next_page_url_from_html(html), "/survey?cursor=next")
 
 
 if __name__ == "__main__":

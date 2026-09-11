@@ -59,7 +59,10 @@ python3 scrape.py --check-robots --robots-output robots_evidence.txt
 Launch a separate Chrome instance with remote debugging and open the public survey page:
 
 ```bash
-open -a "Google Chrome" --args --remote-debugging-port=9222
+open -na "Google Chrome" --args \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.gradcafe-chrome-profile" \
+  "https://www.thegradcafe.com/survey"
 ```
 
 After completing any normal browser verification and confirming that the results table is visible, run:
@@ -72,6 +75,7 @@ python3 auto_next_pages.py \
 ```
 
 Temporary page HTML and page-level JSON are written under `data/html/` and `data/json/`. The merged dataset is rewritten after every successful page, so an interrupted run retains completed work. On restart, the helper loads existing page JSON and continues its page numbering.
+It reads the last saved HTML page's `Next` link and returns Chrome to that exact cursor, so resuming does not depend on which page the browser currently displays. A fresh output directory always begins at `--start-url`.
 
 ## Cleaning and LLM Standardization
 

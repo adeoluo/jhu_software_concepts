@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import websocket  # type: ignore
+from bs4 import BeautifulSoup
 
 from scrape import load_data, save_data, scrape_data_from_html_file, verify_collection_allowed
 
@@ -57,7 +58,7 @@ def _pick_target(preferred_url: str) -> dict[str, Any]:
 
 
 def _evaluate_js(websocket_url: str, expression: str) -> Any:
-    ws = websocket.create_connection(websocket_url)
+    ws = websocket.create_connection(websocket_url, suppress_origin=True)
     try:
         ws.send(
             json.dumps(
@@ -115,6 +116,35 @@ def _click_next_button(websocket_url: str) -> Dict[str, Any]:
 
 def _read_current_html(websocket_url: str) -> str:
     return _evaluate_js(websocket_url, "document.documentElement.outerHTML")
+
+
+def _next_page_url_from_html(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for link in soup.select("a[href]"):
+        text = " ".join(link.get_text(" ", strip=True).split()).lower()
+        label = (link.get("aria-label") or "").strip().lower()
+        rel = [value.lower() for value in link.get("rel", [])]
+        if text == "next" or label == "next" or "next" in rel:
+            return str(link["href"])
+    return ""
+
+
+def _navigate_to_url(websocket_url: str, destination_url: str) -> None:
+    previous_url = _evaluate_js(websocket_url, "document.location.href")
+    if previous_url == destination_url:
+        return
+
+    _evaluate_js(websocket_url, f"window.location.assign({json.dumps(destination_url)})")
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        state = _evaluate_js(
+            websocket_url,
+            "({url: document.location.href, ready: document.readyState})",
+        )
+        if state.get("url") != previous_url and state.get("ready") == "complete":
+            return
+    raise RuntimeError(f"Chrome did not finish navigating to {destination_url}")
 
 
 def _advance_to_next_page(websocket_url: str) -> None:
@@ -192,7 +222,16 @@ def run_capture_loop(
     page_number = existing_pages[-1][0] + 1 if existing_pages else 1
     last_page = page_number + pages - 1 if pages is not None else None
     if existing_pages:
+        previous_html_path = html_dir / f"{prefix}{page_number - 1}.html"
+        if not previous_html_path.exists():
+            raise RuntimeError(f"Cannot resume because {previous_html_path} is missing.")
+        next_url = _next_page_url_from_html(previous_html_path.read_text(encoding="utf-8", errors="replace"))
+        if not next_url:
+            raise RuntimeError(f"Cannot resume because {previous_html_path} has no Next link.")
+        _navigate_to_url(target["webSocketDebuggerUrl"], next_url)
         print(f"Resuming after page {page_number - 1} with {len(merged_by_key)} unique rows already saved.")
+    else:
+        _navigate_to_url(target["webSocketDebuggerUrl"], start_url)
 
     while (last_page is None or page_number <= last_page) and len(merged_by_key) < target_rows:
         html = _read_current_html(target["webSocketDebuggerUrl"])
