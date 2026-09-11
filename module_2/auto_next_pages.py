@@ -15,6 +15,29 @@ from scrape import load_data, save_data, scrape_data_from_html_file, verify_coll
 CHROME_DEBUG_URL = "http://localhost:9222"
 DEFAULT_HOST = "thegradcafe.com"
 DEFAULT_TARGET_ROWS = 100000
+PAGE_DELAY_SECONDS = 2.0
+
+BLOCK_MARKERS = (
+    "just a moment",
+    "checking your browser",
+    "verify you are human",
+    "attention required",
+    "access denied",
+    "rate limit",
+    "too many requests",
+    "cf-error-details",
+    "cf-mitigated",
+)
+
+
+class BlockedError(RuntimeError):
+    """Raised when the site appears to be blocking, throttling, or challenging requests."""
+
+
+def _looks_blocked(html: str) -> bool:
+    """Detect Cloudflare/challenge/rate-limit pages so collection stops instead of retrying."""
+    lowered = html.lower()
+    return any(marker in lowered for marker in BLOCK_MARKERS)
 
 
 def _request_json(url: str) -> Any:
@@ -211,6 +234,11 @@ def run_capture_loop(
 
     existing_pages = _existing_page_files(json_dir, json_prefix)
     merged_by_key: dict[tuple[str, ...], dict[str, Any]] = {}
+    merged_output_path = Path(merged_output)
+    if merged_output_path.exists():
+        # Seed from the merged file too, so a missing/pruned data/json page cache never loses prior rows.
+        for row in load_data(merged_output_path):
+            merged_by_key[_record_key(row)] = row
     previous_page_keys: list[tuple[str, ...]] = []
     for _, path in existing_pages:
         page_rows = load_data(path)
@@ -235,11 +263,21 @@ def run_capture_loop(
 
     while (last_page is None or page_number <= last_page) and len(merged_by_key) < target_rows:
         html = _read_current_html(target["webSocketDebuggerUrl"])
+        if _looks_blocked(html):
+            raise BlockedError(
+                f"GradCafe appears to be blocking, rate-limiting, or challenging this session at page {page_number}. "
+                "Collection stopped instead of retrying or bypassing the restriction."
+            )
         rows = scrape_data_from_html_file(_save_page_html(page_number, html, html_dir, prefix))
         current_page_keys = [_record_key(row) for row in rows]
         if previous_page_keys and current_page_keys == previous_page_keys:
             _advance_to_next_page(target["webSocketDebuggerUrl"])
             html = _read_current_html(target["webSocketDebuggerUrl"])
+            if _looks_blocked(html):
+                raise BlockedError(
+                    f"GradCafe appears to be blocking, rate-limiting, or challenging this session at page {page_number}. "
+                    "Collection stopped instead of retrying or bypassing the restriction."
+                )
             rows = scrape_data_from_html_file(_save_page_html(page_number, html, html_dir, prefix))
             current_page_keys = [_record_key(row) for row in rows]
 
@@ -269,6 +307,7 @@ def run_capture_loop(
             break
 
         previous_page_keys = current_page_keys
+        time.sleep(PAGE_DELAY_SECONDS)  # polite throttling between page requests
         _advance_to_next_page(target["webSocketDebuggerUrl"])
         page_number += 1
 

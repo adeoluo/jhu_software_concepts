@@ -1,15 +1,26 @@
 # Module 2: GradCafe Data Collection and Standardization
 
-- **Student:** Adeolu Ogunnoiki
-- **JHED ID:** aogunno1 (aogunno1@jh.edu)
+## Name
+
+Adeolu Ogunnoiki (JHED: aogunno1, aogunno1@jh.edu)
+
+## Module Info
+
+- **Module:** Module 2 — Web Scraping Assignment
 - **Course:** Modern Software Concepts in Python, EN.605.256.82.FA26
 - **Due:** September 13, 2026 at 11:59 PM
 
-## Overview
+## Approach
 
 This project collects public graduate-admissions results from [The GradCafe](https://www.thegradcafe.com), converts the captured results into structured JSON, cleans the fields, and uses the supplied local LLM project to standardize program and university names. The personal project target is 100,000 unique applicant records, exceeding the assignment minimum of 30,000.
 
-The collection workflow follows the September 7, 2026 assignment update. A normal Chrome session handles Cloudflare verification, a helper reads the rendered HTML through Chrome's debugging interface, and BeautifulSoup parses that saved HTML. Selenium is not used.
+The collection workflow follows the September 7, 2026 assignment update, since a plain `urllib`/Selenium scrape is blocked by Cloudflare on this site. A normal Chrome session (launched with `--remote-debugging-port`) handles Cloudflare's human verification manually, one time. `capture_chrome_html.py`/`auto_next_pages.py` then connect to that already-verified Chrome tab over the Chrome DevTools Protocol (via `websocket-client`), read `document.documentElement.outerHTML`, and click the page's own "Next" control to paginate — no bypass of Cloudflare, CAPTCHA, or rate limits occurs, and only the public `/survey` results are visited. Selenium is not used.
+
+Each captured page is parsed by `scrape.py` with BeautifulSoup: `_extract_rows_from_saved_html` walks each `<tr>`, uses `_parse_primary_row` to pull a primary applicant row (university, raw program text, status, date added, URL) via regex (`DECISION_RE`, `DATE_RE`, `DEGREE_LEVEL_RE`), then folds in the following detail sub-rows (comments, term, student type, GRE/GRE V/GRE AW/GPA) with `_merge_detail_text`. `auto_next_pages.py` runs this in a loop: it dedupes every record by a composite key (`university`, `raw_program`, `status`, `date_added`, `decision_date`, `raw_text`), merges new unique rows into `applicant_data.json`, waits 2 seconds between pages as a polite throttle, and scans each page for Cloudflare/rate-limit/challenge text (`_looks_blocked`) — if detected, it raises immediately and stops instead of retrying or working around the restriction. Progress is written to `data/html/` and `data/json/` per page and merged into `applicant_data.json` after every page (using an atomic temp-file-then-rename write in `save_data`), so an interrupted run never loses previously collected rows and can resume from the last captured page's "Next" link.
+
+`clean.py` then produces a deterministic cleaned copy: `_normalize_text` collapses whitespace and standardizes missing values to `""`, and `_normalize_status` maps status synonyms (e.g., "admitted" → "Accepted") to a consistent vocabulary, while `raw_program`/`raw_text` are always preserved unmodified alongside the cleaned fields for traceability.
+
+Finally, the supplied `llm_hosting/` project (TinyLlama via `llama-cpp-python`, with `canon_universities.txt`/`canon_programs.txt` canonical lists and difflib fuzzy matching) standardizes `program`/`university` into `llm-generated-program`/`llm-generated-university`, added on top of the cleaned row without altering the original fields. `llm_hosting/app.py`'s CLI was extended (beyond the file as originally supplied) with `--out`, `--append`, and `--final-json` flags so that a 100,000-row LLM pass writes JSON Lines incrementally and can resume after an interruption instead of restarting from row 0; `_cli_process_file` counts completed lines in the existing output file and skips that many input rows before continuing. No changes were made to `canon_universities.txt`/`canon_programs.txt` beyond the versions supplied with the assignment.
 
 ## Requirements
 
@@ -46,7 +57,8 @@ deactivate
 - `clean.py`: deterministic field normalization that preserves raw source text
 - `llm_hosting/`: supplied local LLM project, adapted to standardize both program and university
 - `robots_evidence.txt`: saved robots.txt evidence collected before applicant data
-- `RobotsTxT Screenshots.pdf`: visual evidence of the robots.txt review
+- `screenshot.jpg`: visual evidence of the robots.txt review (browser screenshot of `thegradcafe.com/robots.txt`)
+- `RobotsTxT Screenshots.pdf`: additional visual evidence of the robots.txt review, same content as `screenshot.jpg`
 
 ## Collection Workflow
 
@@ -106,11 +118,13 @@ Each parsed applicant object contains the university, program, degree level, sta
 
 ## Compliance
 
-The collection code reads robots.txt and confirms that `/survey` is permitted before processing pages. It does not access sign-in, profile, registration, or other disallowed paths. It does not bypass Cloudflare, CAPTCHA, authentication, or rate limits. The captured policy is preserved in `robots_evidence.txt`, and `RobotsTxT Screenshots.pdf` provides visual evidence of the review.
+The collection code reads robots.txt and confirms that `/survey` is permitted before processing pages. It does not access sign-in, profile, registration, or other disallowed paths. It does not bypass Cloudflare, CAPTCHA, authentication, or rate limits. The captured policy is preserved in `robots_evidence.txt`, and `screenshot.jpg`/`RobotsTxT Screenshots.pdf` provide visual evidence of the review.
 
-## Known Limitations
+During collection, `auto_next_pages.py` waits 2 seconds between page requests as a polite throttle and scans each captured page for Cloudflare challenge, access-denied, or rate-limit markers (for example, "Just a moment", "Attention Required", "Access Denied", "Too Many Requests"). If any marker is found, collection stops immediately with a `BlockedError` instead of retrying or attempting to bypass the restriction.
 
-- The final 100,000-row datasets are generated by the live collection and cleaning commands; they are not present during this source-code checkpoint.
+## Known Bugs
+
+- Regex-based field extraction (GRE/GRE V/GRE AW/GPA, term, student type) depends on GradCafe's current wording and can miss a field on a row phrased unusually; the row is still kept with that field set to `""` rather than dropped or guessed. Fix: expand the relevant regex in `scrape.py`/`_merge_detail_text` as new phrasings are found.
+- If the `data/html/` page cache is deleted (as happened once during development), the resume logic loses its exact pagination cursor and a restart begins again from `--start-url`, re-walking already-collected pages before reaching new ones. No data is lost (`applicant_data.json` and its `data/json/` page cache are unaffected and are reseeded on resume), but the run takes longer. Fix: avoid deleting `data/html/`, or extend `auto_next_pages.py` to persist the last "Next" URL separately from the per-page HTML files.
 - GradCafe can change its page structure or pagination controls, which may require parser updates.
-- The LLM stage downloads a local model on first use and can take substantial time for a large dataset.
-- The LLM CLI keeps a JSON Lines checkpoint during processing and writes the required valid JSON array when the run completes.
+- The LLM stage downloads a local model on first use and can take substantial time for a large dataset; the LLM CLI keeps a JSON Lines checkpoint during processing and writes the required valid JSON array when the run completes, so an interruption does not require restarting from row 0.

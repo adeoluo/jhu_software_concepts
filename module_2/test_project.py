@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from auto_next_pages import _evaluate_js, _next_page_url_from_html
+from auto_next_pages import _evaluate_js, _looks_blocked, _next_page_url_from_html
 from capture_chrome_html import _read_current_page_html
 from clean import clean_data
 from scrape import _extract_rows_from_saved_html, build_result_url, robots_allows
@@ -104,6 +104,11 @@ class ScrapeTests(unittest.TestCase):
         """
 
         self.assertEqual(_next_page_url_from_html(html), "/survey?cursor=next")
+
+    def test_looks_blocked_detects_challenge_page(self):
+        self.assertTrue(_looks_blocked("<title>Just a moment...</title>"))
+        self.assertTrue(_looks_blocked("<h1>Access Denied</h1>"))
+        self.assertFalse(_looks_blocked(SAMPLE_HTML))
 
 
 if __name__ == "__main__":

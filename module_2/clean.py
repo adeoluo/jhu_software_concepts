@@ -61,11 +61,13 @@ def clean_data(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def save_data(data: Iterable[Dict[str, Any]], file_path: str | Path) -> None:
-    """Save cleaned data to a JSON file."""
+    """Save cleaned data to a JSON file atomically so a crash mid-write cannot corrupt the file."""
     output_path = Path(file_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
+    temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
         json.dump(list(data), handle, ensure_ascii=False, indent=2)
+    temp_path.replace(output_path)
 
 
 def load_data(file_path: str | Path) -> List[Dict[str, Any]]:
