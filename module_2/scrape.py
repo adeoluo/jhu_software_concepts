@@ -94,6 +94,11 @@ DECISION_RE = re.compile(
 DATE_RE = re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\b")
 TERM_RE = re.compile(r"\b(Fall|Spring|Summer|Winter)\s+(\d{4})\b", re.IGNORECASE)
 DEGREE_LEVEL_RE = re.compile(r"\b(PhD|Masters?|MFA|MBA|PsyD|EdD|JD|MD|Other)\s*$", re.IGNORECASE)
+# Alternate GRE format seen on some listings, e.g. "GRE, Quantitative: 165, Verbal: 159, Analytical Writing: 4"
+GRE_QVA_RE = re.compile(
+    r"GRE,?\s*Quantitative:?\s*(\d{2,3}).*?Verbal:?\s*(\d{2,3}).*?(?:Analytical Writing|AW):?\s*(\d(?:\.\d{1,2})?)",
+    re.IGNORECASE,
+)
 
 
 def _text(element: Any) -> str:
@@ -154,9 +159,9 @@ def _merge_detail_text(record: Dict[str, Any], detail_text: str) -> None:
         record["student_type"] = student_type.group(1).title()
 
     score_patterns = {
-        "gre": re.compile(r"\bGRE\s+(?!V\b|AW\b)(\d{2,3})\b", re.IGNORECASE),
-        "gre_v": re.compile(r"\bGRE\s*V\s+(\d{2,3})\b", re.IGNORECASE),
-        "gre_aw": re.compile(r"\bGRE\s*AW\s+(\d(?:\.\d{1,2})?)\b", re.IGNORECASE),
+        "gre": re.compile(r"\bGRE\s*:?\s+(?!V\b|AW\b)(\d{2,4})\b", re.IGNORECASE),
+        "gre_v": re.compile(r"\bGRE\s*V\s*:?\s+(\d{2,3})\b", re.IGNORECASE),
+        "gre_aw": re.compile(r"\bGRE\s*AW\s*:?\s+(\d(?:\.\d{1,2})?)\b", re.IGNORECASE),
         "gpa": re.compile(r"\bGPA\s+(\d(?:\.\d{1,3})?)\b", re.IGNORECASE),
     }
     for field, pattern in score_patterns.items():
@@ -183,9 +188,15 @@ def _extract_rows_from_saved_html(html: str) -> List[Dict[str, Any]]:
         if not detail_text or detail_text.lower() in {"advertisement", "total comments"}:
             continue
         current["raw_text"] = f"{current['raw_text']} {detail_text}".strip()
+        quant_match = GRE_QVA_RE.search(detail_text)
+        if quant_match:
+            current["gre"] = current["gre"] or quant_match.group(1)
+            current["gre_v"] = current["gre_v"] or quant_match.group(2)
+            current["gre_aw"] = current["gre_aw"] or quant_match.group(3)
+            detail_text = (detail_text[: quant_match.start()] + detail_text[quant_match.end() :]).strip(" ,")
         if TERM_RE.search(detail_text):
             _merge_detail_text(current, detail_text)
-        elif "total comments" not in detail_text.lower():
+        elif detail_text and "total comments" not in detail_text.lower():
             current["comments"] = " ".join(filter(None, [current["comments"], detail_text]))
 
     if current:

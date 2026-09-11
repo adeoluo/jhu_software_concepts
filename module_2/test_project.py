@@ -31,6 +31,22 @@ SAMPLE_HTML = """
 </table>
 """
 
+QVA_HTML = """
+<table>
+  <tbody>
+    <tr>
+      <td>KU Leuven</td>
+      <td>Engineering Management Masters</td>
+      <td>Aug 28, 2026</td>
+      <td>Accepted on Apr 10</td>
+      <td><a href="/result/456">Total comments</a></td>
+    </tr>
+    <tr><td colspan="5">Fall 2026 International GPA 2.21</td></tr>
+    <tr><td colspan="5">GRE, Quantitative: 165, Verbal: 159, Analytical Writing: 4</td></tr>
+  </tbody>
+</table>
+"""
+
 
 class ScrapeTests(unittest.TestCase):
     @patch("auto_next_pages.websocket.create_connection")
@@ -109,6 +125,15 @@ class ScrapeTests(unittest.TestCase):
         self.assertTrue(_looks_blocked("<title>Just a moment...</title>"))
         self.assertTrue(_looks_blocked("<h1>Access Denied</h1>"))
         self.assertFalse(_looks_blocked(SAMPLE_HTML))
+
+    def test_parser_extracts_quantitative_verbal_aw_gre_format(self):
+        rows = _extract_rows_from_saved_html(QVA_HTML)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["gre"], "165")
+        self.assertEqual(rows[0]["gre_v"], "159")
+        self.assertEqual(rows[0]["gre_aw"], "4")
+        self.assertEqual(rows[0]["comments"], "")
 
 
 if __name__ == "__main__":
