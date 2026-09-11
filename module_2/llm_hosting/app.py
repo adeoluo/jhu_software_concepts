@@ -260,6 +260,14 @@ def _normalize_input(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _standardization_input(row: Dict[str, Any]) -> str:
+    return ", ".join(
+        value.strip()
+        for value in (str(row.get("program") or ""), str(row.get("university") or ""))
+        if value.strip()
+    )
+
+
 @app.get("/")
 def health() -> Any:
     """Simple liveness check."""
@@ -274,7 +282,7 @@ def standardize() -> Any:
 
     out: List[Dict[str, Any]] = []
     for row in rows:
-        program_text = (row or {}).get("program") or ""
+        program_text = _standardization_input(row or {})
         result = _call_llm(program_text)
         row["llm-generated-program"] = result["standardized_program"]
         row["llm-generated-university"] = result["standardized_university"]
@@ -288,22 +296,27 @@ def _cli_process_file(
     out_path: str | None,
     append: bool,
     to_stdout: bool,
+    final_json_path: str | None,
 ) -> None:
     """Process a JSON file and write JSONL incrementally."""
     with open(in_path, "r", encoding="utf-8") as f:
         rows = _normalize_input(json.load(f))
 
     sink = sys.stdout if to_stdout else None
+    completed_rows = 0
     if not to_stdout:
         out_path = out_path or (in_path + ".jsonl")
+        if append and os.path.exists(out_path):
+            with open(out_path, "r", encoding="utf-8") as existing:
+                completed_rows = sum(1 for line in existing if line.strip())
         mode = "a" if append else "w"
         sink = open(out_path, mode, encoding="utf-8")
 
     assert sink is not None  # for type-checkers
 
     try:
-        for row in rows:
-            program_text = (row or {}).get("program") or ""
+        for row in rows[completed_rows:]:
+            program_text = _standardization_input(row or {})
             result = _call_llm(program_text)
             row["llm-generated-program"] = result["standardized_program"]
             row["llm-generated-university"] = result["standardized_university"]
@@ -314,6 +327,15 @@ def _cli_process_file(
     finally:
         if sink is not sys.stdout:
             sink.close()
+
+    if final_json_path and out_path:
+        finalized_rows: List[Dict[str, Any]] = []
+        with open(out_path, "r", encoding="utf-8") as source:
+            for line in source:
+                if line.strip():
+                    finalized_rows.append(json.loads(line))
+        with open(final_json_path, "w", encoding="utf-8") as destination:
+            json.dump(finalized_rows, destination, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
@@ -348,6 +370,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Write JSON Lines to stdout instead of a file.",
     )
+    parser.add_argument(
+        "--final-json",
+        default=None,
+        help="After processing completes, convert the JSONL checkpoint to a valid JSON array at this path.",
+    )
     args = parser.parse_args()
 
     if args.serve or args.file is None:
@@ -359,4 +386,5 @@ if __name__ == "__main__":
             out_path=args.out,
             append=bool(args.append),
             to_stdout=bool(args.stdout),
+            final_json_path=args.final_json,
         )

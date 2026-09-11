@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict
 
 import websocket  # type: ignore
 
-from scrape import save_data, scrape_data_from_html_file
+from scrape import load_data, save_data, scrape_data_from_html_file, verify_collection_allowed
 
 CHROME_DEBUG_URL = "http://localhost:9222"
 DEFAULT_HOST = "thegradcafe.com"
@@ -84,34 +85,26 @@ def _evaluate_js(websocket_url: str, expression: str) -> Any:
 def _click_next_button(websocket_url: str) -> Dict[str, Any]:
     expression = r"""
     (() => {
-        const candidates = [];
-        const all = document.querySelectorAll('a, button, input, span, div');
-        for (const el of all) {
-            if (!el || el.offsetParent === null) continue;
+        const candidates = [...document.querySelectorAll('a, button')].filter((el) => {
+            if (!el || el.offsetParent === null || el.disabled) return false;
             const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            const label = (el.getAttribute('aria-label') || '').toLowerCase();
-            const title = (el.getAttribute('title') || '').toLowerCase();
-            const value = (el.value || '').toLowerCase();
+            const label = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+            const rel = (el.getAttribute('rel') || '').trim().toLowerCase();
             const href = (el.getAttribute('href') || '').toLowerCase();
-            const className = (el.className || '').toString().toLowerCase();
-            const id = (el.id || '').toLowerCase();
-            const textMatches = ['next', 'older', 'more', 'continue', 'view more'];
-            const matches = textMatches.some((word) => text.includes(word) || label.includes(word) || title.includes(word) || value.includes(word) || href.includes(word) || className.includes(word) || id.includes(word));
-            if (matches) candidates.push(el);
-        }
+            return rel === 'next' || text === 'next' || label === 'next' || href.includes('/survey?cursor=');
+        });
 
-        const target = candidates.find((el) => {
-            const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            return text.includes('next') || text.includes('older') || text.includes('more') || text.includes('continue');
-        }) || candidates[0];
+        const target = candidates.find((el) => (el.getAttribute('rel') || '').toLowerCase() === 'next')
+            || candidates.find((el) => (el.innerText || el.textContent || '').trim().toLowerCase() === 'next')
+            || candidates.find((el) => (el.getAttribute('aria-label') || '').trim().toLowerCase() === 'next')
+            || candidates.find((el) => (el.getAttribute('href') || '').toLowerCase().includes('/survey?cursor='));
 
         if (!target) {
             return { clicked: false, url: document.location.href };
         }
 
         target.scrollIntoView({ block: 'center', behavior: 'instant' });
-        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-        if (typeof target.click === 'function') target.click();
+        target.click();
 
         const currentUrl = document.location.href;
         return { clicked: true, url: currentUrl };
@@ -124,11 +117,46 @@ def _read_current_html(websocket_url: str) -> str:
     return _evaluate_js(websocket_url, "document.documentElement.outerHTML")
 
 
+def _advance_to_next_page(websocket_url: str) -> None:
+    previous_url = _evaluate_js(websocket_url, "document.location.href")
+    click_result = _click_next_button(websocket_url)
+    if not click_result.get("clicked"):
+        raise RuntimeError("Could not find an enabled Next link in the results pagination.")
+
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        state = _evaluate_js(
+            websocket_url,
+            "({url: document.location.href, ready: document.readyState})",
+        )
+        if state.get("url") != previous_url and state.get("ready") == "complete":
+            return
+    raise RuntimeError("Chrome did not finish navigating to the next results page.")
+
+
 def _save_page_html(page_number: int, html: str, output_dir: Path, prefix: str) -> str:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{prefix}{page_number}.html"
     path.write_text(html, encoding="utf-8")
     return str(path)
+
+
+def _record_key(record: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        str(record.get(field, "")).strip()
+        for field in ("university", "raw_program", "status", "date_added", "decision_date", "raw_text")
+    )
+
+
+def _existing_page_files(json_dir: Path, json_prefix: str) -> list[tuple[int, Path]]:
+    pattern = re.compile(rf"^{re.escape(json_prefix)}(\d+)\.json$")
+    pages: list[tuple[int, Path]] = []
+    for path in json_dir.glob(f"{json_prefix}*.json"):
+        match = pattern.match(path.name)
+        if match:
+            pages.append((int(match.group(1)), path))
+    return sorted(pages)
 
 
 def run_capture_loop(
@@ -138,7 +166,9 @@ def run_capture_loop(
     output_dir: str | Path = "data",
     prefix: str = "gradcafe_page_",
     json_prefix: str = "applicant_data_page",
+    merged_output: str | Path = "applicant_data.json",
 ) -> list[str]:
+    verify_collection_allowed(start_url)
     output_path = Path(output_dir)
     html_dir = output_path / "html"
     json_dir = output_path / "json"
@@ -149,45 +179,62 @@ def run_capture_loop(
     if "webSocketDebuggerUrl" not in target:
         raise RuntimeError("Chrome target did not expose a debugging websocket endpoint.")
 
+    existing_pages = _existing_page_files(json_dir, json_prefix)
+    merged_by_key: dict[tuple[str, ...], dict[str, Any]] = {}
+    previous_page_keys: list[tuple[str, ...]] = []
+    for _, path in existing_pages:
+        page_rows = load_data(path)
+        previous_page_keys = [_record_key(row) for row in page_rows]
+        for row in page_rows:
+            merged_by_key[_record_key(row)] = row
+
     saved_files: list[str] = []
-    total_rows = 0
-    page_number = 1
-    max_pages = pages if pages is not None else max(1, target_rows // 10 + 100)
+    page_number = existing_pages[-1][0] + 1 if existing_pages else 1
+    last_page = page_number + pages - 1 if pages is not None else None
+    if existing_pages:
+        print(f"Resuming after page {page_number - 1} with {len(merged_by_key)} unique rows already saved.")
 
-    while page_number <= max_pages and total_rows < target_rows:
-        if page_number > 1:
-            time.sleep(1.5)
-            click_result = _click_next_button(target["webSocketDebuggerUrl"])
-            if not click_result.get("clicked"):
-                raise RuntimeError(f"Could not find the Next button on page {page_number - 1}.")
-            time.sleep(3)
-            current_url = _evaluate_js(target["webSocketDebuggerUrl"], "document.location.href")
-            if not current_url or current_url.startswith("about:blank"):
-                raise RuntimeError("The browser did not advance to the next page after clicking Next.")
-
+    while (last_page is None or page_number <= last_page) and len(merged_by_key) < target_rows:
         html = _read_current_html(target["webSocketDebuggerUrl"])
-        page_file = _save_page_html(page_number, html, html_dir, prefix)
+        rows = scrape_data_from_html_file(_save_page_html(page_number, html, html_dir, prefix))
+        current_page_keys = [_record_key(row) for row in rows]
+        if previous_page_keys and current_page_keys == previous_page_keys:
+            _advance_to_next_page(target["webSocketDebuggerUrl"])
+            html = _read_current_html(target["webSocketDebuggerUrl"])
+            rows = scrape_data_from_html_file(_save_page_html(page_number, html, html_dir, prefix))
+            current_page_keys = [_record_key(row) for row in rows]
+
+        page_file = str(html_dir / f"{prefix}{page_number}.html")
+        if len(rows) == 0:
+            Path(page_file).unlink(missing_ok=True)
+            raise RuntimeError(f"No rows were found on page {page_number}. The page structure may have changed.")
+        if previous_page_keys and current_page_keys == previous_page_keys:
+            Path(page_file).unlink(missing_ok=True)
+            raise RuntimeError("The browser returned the same applicant page twice; collection stopped before duplicating data.")
+
         saved_files.append(page_file)
-
-        rows = scrape_data_from_html_file(page_file)
-        total_rows += len(rows)
-
         json_path = json_dir / f"{json_prefix}{page_number}.json"
         save_data(rows, json_path)
-        print(f"Page {page_number}: saved {len(rows)} rows -> {json_path} (total so far: {total_rows})")
+        for row in rows:
+            merged_by_key[_record_key(row)] = row
+        save_data(merged_by_key.values(), merged_output)
+        print(
+            f"Page {page_number}: saved {len(rows)} applicant records -> {json_path} "
+            f"(unique total: {len(merged_by_key)})"
+        )
 
-        if len(rows) == 0:
-            raise RuntimeError(f"No rows were found on page {page_number}. The page structure may have changed.")
-
-        if total_rows >= target_rows:
-            print(f"Target reached: {total_rows} rows collected, exceeding {target_rows}.")
+        if len(merged_by_key) >= target_rows:
+            print(f"Target reached: {len(merged_by_key)} unique rows collected.")
+            break
+        if last_page is not None and page_number >= last_page:
             break
 
+        previous_page_keys = current_page_keys
+        _advance_to_next_page(target["webSocketDebuggerUrl"])
         page_number += 1
-        time.sleep(1.0)
 
-    if total_rows < target_rows:
-        print(f"Stopped after {page_number - 1} pages with {total_rows} rows. Target was {target_rows} rows.")
+    if len(merged_by_key) < target_rows:
+        print(f"Stopped with {len(merged_by_key)} unique rows. Target was {target_rows} rows.")
 
     return saved_files
 
@@ -202,6 +249,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default="data", help="Base directory for captured HTML and JSON outputs. Subfolders html/ and json/ are used automatically.")
     parser.add_argument("--html-prefix", default="gradcafe_page_", help="HTML file prefix.")
     parser.add_argument("--json-prefix", default="applicant_data_page", help="JSON file prefix.")
+    parser.add_argument("--merged-output", default="applicant_data.json", help="Incremental merged JSON output path.")
     args = parser.parse_args()
 
     run_capture_loop(
@@ -211,4 +259,5 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         prefix=args.html_prefix,
         json_prefix=args.json_prefix,
+        merged_output=args.merged_output,
     )

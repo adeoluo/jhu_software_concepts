@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import ssl
-import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
+from urllib.robotparser import RobotFileParser
 from urllib.request import Request, urlopen
 
+import certifi
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.thegradcafe.com"
-DEFAULT_RESULTS_PATH = "/results"
+DEFAULT_RESULTS_PATH = "/survey"
+USER_AGENT = "JHUProjectScraper/1.0"
 
 
 def check_robots_txt(base_url: str = BASE_URL) -> str:
@@ -26,84 +30,168 @@ def check_robots_txt(base_url: str = BASE_URL) -> str:
     request = Request(
         robots_url,
         headers={
-            "User-Agent": "Mozilla/5.0 (compatible; JHUProjectScraper/1.0; +https://example.com)",
+            "User-Agent": USER_AGENT,
             "Accept": "text/plain, */*",
         },
     )
-    ssl_context = ssl._create_unverified_context()
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(request, timeout=30, context=ssl_context) as response:
         text = response.read().decode("utf-8", errors="replace")
     return text
 
 
-def build_result_url(page: int = 1, query: Optional[str] = None) -> str:
-    """Build the public GradCafe results URL from the current live site layout."""
-    params: Dict[str, str] = {"page": str(page)}
+def build_result_url(cursor: Optional[str] = None, query: Optional[str] = None) -> str:
+    """Build a public GradCafe survey URL using its cursor pagination."""
+    params: Dict[str, str] = {}
+    if cursor:
+        params["cursor"] = cursor
     if query:
         params["q"] = query
-    url = f"{BASE_URL}{DEFAULT_RESULTS_PATH}?page={page}"
-    if query:
-        url += f"&q={query}"
-    return url
+    query_string = urlencode(params)
+    url = f"{BASE_URL}{DEFAULT_RESULTS_PATH}"
+    return f"{url}?{query_string}" if query_string else url
 
 
-def _safe_request(url: str, timeout: int = 30) -> Optional[str]:
-    """Request a page with a browser-like User-Agent and explicit SSL handling."""
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
+def robots_allows(target_url: str, robots_text: Optional[str] = None) -> bool:
+    """Return whether robots.txt permits this project's user agent."""
+    parser = RobotFileParser()
+    parser.set_url(urljoin(BASE_URL, "/robots.txt"))
+    parser.parse((robots_text or check_robots_txt()).splitlines())
+    return parser.can_fetch(USER_AGENT, target_url)
+
+
+def verify_collection_allowed(target_url: str = f"{BASE_URL}{DEFAULT_RESULTS_PATH}") -> str:
+    """Fetch robots.txt and stop unless the target URL is permitted."""
+    robots_text = check_robots_txt()
+    if not robots_allows(target_url, robots_text):
+        raise PermissionError(f"robots.txt does not permit collection from {target_url}")
+    return robots_text
+
+
+def save_robots_evidence(
+    file_path: str | Path,
+    target_url: str = f"{BASE_URL}{DEFAULT_RESULTS_PATH}",
+) -> None:
+    """Save the checked policy, target, timestamp, and permission result."""
+    robots_text = check_robots_txt()
+    allowed = robots_allows(target_url, robots_text)
+    evidence = (
+        f"Source: {urljoin(BASE_URL, '/robots.txt')}\n"
+        f"Target checked: {target_url}\n"
+        f"Checked UTC: {datetime.now(timezone.utc).isoformat()}\n"
+        f"Allowed for {USER_AGENT}: {allowed}\n\n"
+        f"{robots_text}"
     )
-    ssl_context = ssl._create_unverified_context()
-    try:
-        with urlopen(request, timeout=timeout, context=ssl_context) as response:
-            return response.read().decode("utf-8", errors="replace")
-    except Exception:
+    Path(file_path).write_text(evidence, encoding="utf-8")
+    if not allowed:
+        raise PermissionError(f"robots.txt does not permit collection from {target_url}")
+
+
+DECISION_RE = re.compile(
+    r"\b(accepted|rejected|wait\s*listed|interview(?:ed)?)\b(?:\s+on\s+([A-Z][a-z]{2}\s+\d{1,2}))?",
+    re.IGNORECASE,
+)
+DATE_RE = re.compile(r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\b")
+TERM_RE = re.compile(r"\b(Fall|Spring|Summer|Winter)\s+(\d{4})\b", re.IGNORECASE)
+DEGREE_LEVEL_RE = re.compile(r"\b(PhD|Masters?|MFA|MBA|PsyD|EdD|JD|MD|Other)\s*$", re.IGNORECASE)
+
+
+def _text(element: Any) -> str:
+    return " ".join(element.get_text(" ", strip=True).split())
+
+
+def _first_match(pattern: re.Pattern[str], text: str, group: int = 0) -> str:
+    match = pattern.search(text)
+    return match.group(group).strip() if match else ""
+
+
+def _parse_primary_row(entry: Any) -> Optional[Dict[str, Any]]:
+    cells = entry.find_all(["td", "th"], recursive=False)
+    cell_text = [_text(cell) for cell in cells]
+    full_text = " ".join(value for value in cell_text if value)
+    decision = DECISION_RE.search(full_text)
+    date_added = DATE_RE.search(full_text)
+    if len(cell_text) < 4 or not decision or not date_added:
         return None
+
+    raw_program = cell_text[1]
+    degree_match = DEGREE_LEVEL_RE.search(raw_program)
+    degree_level = degree_match.group(1) if degree_match else ""
+    program = raw_program[:degree_match.start()].strip() if degree_match else raw_program
+
+    record: Dict[str, Any] = {
+        "raw_text": full_text,
+        "program": program,
+        "university": cell_text[0],
+        "status": "Waitlisted" if decision.group(1).lower().replace(" ", "") == "waitlisted" else decision.group(1).title(),
+        "date_added": date_added.group(0),
+        "url": "",
+        "comments": "",
+        "decision_date": decision.group(2) or "",
+        "start_term": "",
+        "student_type": "",
+        "gre": "",
+        "gre_v": "",
+        "gpa": "",
+        "gre_aw": "",
+        "degree_level": degree_level,
+        "raw_program": raw_program,
+    }
+    link = entry.select_one("a[href]")
+    if link:
+        href = link.get("href", "")
+        record["url"] = href if href.startswith("http") else urljoin(BASE_URL, href)
+    return record
+
+
+def _merge_detail_text(record: Dict[str, Any], detail_text: str) -> None:
+    term = TERM_RE.search(detail_text)
+    if term:
+        record["start_term"] = f"{term.group(1).title()} {term.group(2)}"
+
+    student_type = re.search(r"\b(American|International|Other)\b", detail_text, re.IGNORECASE)
+    if student_type:
+        record["student_type"] = student_type.group(1).title()
+
+    score_patterns = {
+        "gre": re.compile(r"\bGRE\s+(?!V\b|AW\b)(\d{2,3})\b", re.IGNORECASE),
+        "gre_v": re.compile(r"\bGRE\s*V\s+(\d{2,3})\b", re.IGNORECASE),
+        "gre_aw": re.compile(r"\bGRE\s*AW\s+(\d(?:\.\d{1,2})?)\b", re.IGNORECASE),
+        "gpa": re.compile(r"\bGPA\s+(\d(?:\.\d{1,3})?)\b", re.IGNORECASE),
+    }
+    for field, pattern in score_patterns.items():
+        record[field] = _first_match(pattern, detail_text, 1)
 
 
 def _extract_rows_from_saved_html(html: str) -> List[Dict[str, Any]]:
-    """Parse saved GradCafe HTML content using BeautifulSoup.
-
-    This matches the assignment note that the working approach is to open GradCafe
-    in a normal browser, complete Cloudflare verification manually, and then save
-    the resulting visible HTML for local parsing.
-    """
+    """Parse one applicant record from each GradCafe result group."""
     soup = BeautifulSoup(html, "html.parser")
-    rows: List[Dict[str, Any]] = []
-    for entry in soup.select("tr, .result-row, .admission-row, .applicant-row, .entry"):
-        text = " ".join(entry.get_text(" ", strip=True).split())
-        if not text:
+    records: List[Dict[str, Any]] = []
+    current: Optional[Dict[str, Any]] = None
+
+    for entry in soup.select("tr"):
+        primary = _parse_primary_row(entry)
+        if primary:
+            if current:
+                records.append(current)
+            current = primary
             continue
-        row = {
-            "raw_text": text,
-            "program": "",
-            "university": "",
-            "status": "",
-            "date_added": "",
-            "url": "",
-            "comments": "",
-            "decision_date": "",
-            "start_term": "",
-            "student_type": "",
-            "gre": "",
-            "gre_v": "",
-            "gpa": "",
-            "gre_aw": "",
-            "degree_level": "",
-            "raw_program": "",
-        }
-        for link in entry.select("a[href]"):
-            href = link.get("href", "")
-            if href:
-                full_url = href if href.startswith("http") else urljoin(BASE_URL, href)
-                row["url"] = full_url
-                break
-        rows.append(row)
-    return rows
+
+        if not current:
+            continue
+        detail_text = _text(entry)
+        if not detail_text or detail_text.lower() in {"advertisement", "total comments"}:
+            continue
+        current["raw_text"] = f"{current['raw_text']} {detail_text}".strip()
+        if TERM_RE.search(detail_text):
+            _merge_detail_text(current, detail_text)
+        elif "total comments" not in detail_text.lower():
+            current["comments"] = " ".join(filter(None, [current["comments"], detail_text]))
+
+    if current:
+        records.append(current)
+
+    return records
 
 
 def scrape_data_from_html_file(file_path: str | Path) -> List[Dict[str, Any]]:
@@ -114,11 +202,7 @@ def scrape_data_from_html_file(file_path: str | Path) -> List[Dict[str, Any]]:
 
 
 def scrape_data(
-    pages: int = 1,
-    delay_seconds: float = 1.0,
-    max_rows: int = 100000,
-    query: Optional[str] = None,
-    html_file: Optional[str | Path] = None,
+    html_file: str | Path,
 ) -> List[Dict[str, Any]]:
     """Collect records from saved browser-captured HTML as the real working approach.
 
@@ -127,27 +211,9 @@ def scrape_data(
     for a given page. This function therefore expects a saved HTML file that was
     captured from a user-verified browser session.
     """
-    robots_text = check_robots_txt()
-    if not robots_text:
-        raise RuntimeError("robots.txt could not be read before scraping.")
+    verify_collection_allowed()
 
-    if html_file is not None:
-        return scrape_data_from_html_file(html_file)
-
-    all_rows: List[Dict[str, Any]] = []
-    for page_number in range(1, pages + 1):
-        page_url = build_result_url(page=page_number, query=query)
-        html = _safe_request(page_url)
-        if not html:
-            break
-        data = _extract_rows_from_saved_html(html)
-        if not data:
-            break
-        all_rows.extend(data)
-        if len(all_rows) >= max_rows:
-            break
-        time.sleep(delay_seconds)
-    return all_rows
+    return scrape_data_from_html_file(html_file)
 
 
 def clean_data(data: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -192,12 +258,19 @@ def load_data(file_path: str | Path) -> List[Dict[str, Any]]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape GradCafe applicant data from captured HTML pages.")
-    parser.add_argument("--pages", type=int, default=1, help="Number of pages to process.")
     parser.add_argument("--html-file", type=str, default=None, help="Path to saved browser-captured GradCafe HTML.")
     parser.add_argument("--output", type=str, default="applicant_data.json", help="Path to save the JSON output.")
-    parser.add_argument("--max-rows", type=int, default=100000, help="Upper bound for rows to collect.")
+    parser.add_argument("--check-robots", action="store_true", help="Save robots.txt evidence and exit.")
+    parser.add_argument("--robots-output", default="robots_evidence.txt", help="Path for robots.txt evidence.")
     args = parser.parse_args()
 
-    records = scrape_data(pages=args.pages, max_rows=args.max_rows, html_file=args.html_file)
+    if args.check_robots:
+        save_robots_evidence(args.robots_output)
+        print(f"Saved robots.txt evidence to {args.robots_output}")
+        raise SystemExit(0)
+    if not args.html_file:
+        parser.error("--html-file is required unless --check-robots is used")
+
+    records = scrape_data(args.html_file)
     save_data(records, args.output)
     print(f"Saved {len(records)} rows to {args.output}")

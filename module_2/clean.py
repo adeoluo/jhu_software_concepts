@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -53,6 +54,7 @@ def clean_data(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "gpa": _normalize_text(item.get("gpa") or ""),
             "gre_aw": _normalize_text(item.get("gre_aw") or ""),
             "degree_level": _normalize_text(item.get("degree_level") or ""),
+            "raw_text": _normalize_text(item.get("raw_text") or ""),
         }
         cleaned.append(clean_row)
     return cleaned
@@ -74,11 +76,20 @@ def load_data(file_path: str | Path) -> List[Dict[str, Any]]:
 
 
 if __name__ == "__main__":
-    sample_path = Path("applicant_data.json")
-    if sample_path.exists():
-        raw_rows = load_data(sample_path)
+    parser = argparse.ArgumentParser(description="Clean the merged GradCafe applicant dataset.")
+    parser.add_argument("--input", default="applicant_data.json", help="Merged raw JSON input path.")
+    parser.add_argument(
+        "--output",
+        default="cleaned_applicant_data.json",
+        help="Cleaned JSON output path for the later LLM standardization step.",
+    )
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if input_path.exists():
+        raw_rows = load_data(input_path)
         cleaned_rows = clean_data(raw_rows)
-        save_data(cleaned_rows, "llm_extend_applicant_data.json")
-        print(f"Cleaned {len(cleaned_rows)} rows and saved llm_extend_applicant_data.json")
+        save_data(cleaned_rows, args.output)
+        print(f"Cleaned {len(cleaned_rows)} rows and saved {args.output}")
     else:
-        print("No applicant_data.json found. Run the scraping step first.")
+        raise FileNotFoundError(f"No input dataset found at {input_path}. Run the collection step first.")

@@ -1,0 +1,7 @@
+.DS_Store
+**/.DS_Store
+**/__pycache__/
+*.py[cod]
+module_2/.venv/
+module_2/data/
+module_2/llm_hosting/models/
