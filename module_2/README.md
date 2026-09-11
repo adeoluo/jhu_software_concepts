@@ -46,6 +46,7 @@ deactivate
 - `clean.py`: deterministic field normalization that preserves raw source text
 - `llm_hosting/`: supplied local LLM project, adapted to standardize both program and university
 - `robots_evidence.txt`: saved robots.txt evidence collected before applicant data
+- `RobotsTxT Screenshots.pdf`: visual evidence of the robots.txt review
 
 ## Collection Workflow
 
@@ -101,7 +102,7 @@ Each parsed applicant object contains the university, program, degree level, sta
 
 ## Compliance
 
-The collection code reads robots.txt and confirms that `/survey` is permitted before processing pages. It does not access sign-in, profile, registration, or other disallowed paths. It does not bypass Cloudflare, CAPTCHA, authentication, or rate limits. The captured policy is preserved in `robots_evidence.txt`.
+The collection code reads robots.txt and confirms that `/survey` is permitted before processing pages. It does not access sign-in, profile, registration, or other disallowed paths. It does not bypass Cloudflare, CAPTCHA, authentication, or rate limits. The captured policy is preserved in `robots_evidence.txt`, and `RobotsTxT Screenshots.pdf` provides visual evidence of the review.
 
 ## Known Limitations
 
