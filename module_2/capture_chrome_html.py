@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 from pathlib import Path
+from typing import Any
 from urllib.request import Request, urlopen
 
 import websocket  # type: ignore
@@ -11,13 +12,15 @@ import websocket  # type: ignore
 CHROME_DEBUG_URL = "http://localhost:9222"
 
 
-def _request_json(url: str):
+def _request_json(url: str) -> Any:
+    """Send an HTTP request to Chrome DevTools endpoint and return JSON response."""
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=20) as response:
         return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
-def _list_targets():
+def _list_targets() -> list[dict[str, Any]]:
+    """Query Chrome DevTools HTTP endpoint for active page targets."""
     try:
         return _request_json(f"{CHROME_DEBUG_URL}/json/list")
     except Exception as exc:  # pragma: no cover
@@ -27,7 +30,8 @@ def _list_targets():
         ) from exc
 
 
-def _pick_target(targets, preferred_url: str):
+def _pick_target(targets: list[dict[str, Any]], preferred_url: str) -> dict[str, Any]:
+    """Select the active GradCafe page target from Chrome DevTools targets."""
     preferred_host = "thegradcafe.com"
     matches = [t for t in targets if t.get("type") == "page" and preferred_host in (t.get("url") or "")]
     if matches:
@@ -48,6 +52,7 @@ def _pick_target(targets, preferred_url: str):
 
 
 def _read_current_page_html(websocket_url: str) -> str:
+    """Fetch document outerHTML from the selected Chrome WebSocket target."""
     ws = websocket.create_connection(websocket_url, suppress_origin=True)
     try:
         ws.send(json.dumps({
@@ -72,6 +77,7 @@ def _read_current_page_html(websocket_url: str) -> str:
 
 
 def capture_html(url: str, output_path: str) -> str:
+    """Capture current page HTML from Chrome and write it to output_path."""
     targets = _list_targets()
     target = _pick_target(targets, url)
     if "webSocketDebuggerUrl" not in target:

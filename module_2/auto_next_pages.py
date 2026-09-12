@@ -46,6 +46,7 @@ def _looks_blocked(html: str) -> bool:
 
 
 def _request_json(url: str) -> Any:
+    """Send an HTTP request to Chrome DevTools JSON endpoints."""
     import urllib.request
 
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -54,6 +55,7 @@ def _request_json(url: str) -> Any:
 
 
 def _list_targets() -> list[dict[str, Any]]:
+    """Query Chrome DevTools for open tab target descriptors."""
     try:
         return _request_json(f"{CHROME_DEBUG_URL}/json/list")
     except Exception as exc:  # pragma: no cover
@@ -64,6 +66,7 @@ def _list_targets() -> list[dict[str, Any]]:
 
 
 def _pick_target(preferred_url: str) -> dict[str, Any]:
+    """Find and return the Chrome DevTools target for GradCafe."""
     targets = _list_targets()
     matches = [t for t in targets if t.get("type") == "page" and DEFAULT_HOST in (t.get("url") or "")]
     if matches:
@@ -86,6 +89,7 @@ def _pick_target(preferred_url: str) -> dict[str, Any]:
 
 
 def _evaluate_js(websocket_url: str, expression: str) -> Any:
+    """Execute JavaScript in the remote Chrome browser tab via WebSocket."""
     ws = websocket.create_connection(websocket_url, suppress_origin=True)
     try:
         ws.send(
@@ -112,6 +116,7 @@ def _evaluate_js(websocket_url: str, expression: str) -> Any:
 
 
 def _click_next_button(websocket_url: str) -> Dict[str, Any]:
+    """Locate and click the Next pagination link in Chrome."""
     expression = r"""
     (() => {
         const candidates = [...document.querySelectorAll('a, button')].filter((el) => {
@@ -143,10 +148,12 @@ def _click_next_button(websocket_url: str) -> Dict[str, Any]:
 
 
 def _read_current_html(websocket_url: str) -> str:
+    """Fetch outerHTML of current document from the remote browser tab."""
     return _evaluate_js(websocket_url, "document.documentElement.outerHTML")
 
 
 def _next_page_url_from_html(html: str) -> str:
+    """Parse HTML and extract the next pagination cursor URL."""
     soup = BeautifulSoup(html, "html.parser")
     for link in soup.select("a[href]"):
         text = " ".join(link.get_text(" ", strip=True).split()).lower()
@@ -158,6 +165,7 @@ def _next_page_url_from_html(html: str) -> str:
 
 
 def _navigate_to_url(websocket_url: str, destination_url: str) -> None:
+    """Direct Chrome browser tab to destination URL and wait until ready."""
     previous_url = _evaluate_js(websocket_url, "document.location.href")
     if previous_url == destination_url:
         return
@@ -176,6 +184,7 @@ def _navigate_to_url(websocket_url: str, destination_url: str) -> None:
 
 
 def _advance_to_next_page(websocket_url: str) -> None:
+    """Click Next button and wait for pagination navigation completion."""
     previous_url = _evaluate_js(websocket_url, "document.location.href")
     click_result = _click_next_button(websocket_url)
     if not click_result.get("clicked"):
@@ -201,6 +210,7 @@ def _advance_to_next_page(websocket_url: str) -> None:
 
 
 def _save_page_html(page_number: int, html: str, output_dir: Path, prefix: str) -> str:
+    """Save captured HTML page string to disk."""
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{prefix}{page_number}.html"
     path.write_text(html, encoding="utf-8")
@@ -208,6 +218,7 @@ def _save_page_html(page_number: int, html: str, output_dir: Path, prefix: str) 
 
 
 def _record_key(record: dict[str, Any]) -> tuple[str, ...]:
+    """Return composite tuple key for applicant record deduplication."""
     return tuple(
         str(record.get(field, "")).strip()
         for field in ("university", "raw_program", "status", "date_added", "decision_date", "raw_text")
@@ -215,6 +226,7 @@ def _record_key(record: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _existing_page_files(json_dir: Path, json_prefix: str) -> list[tuple[int, Path]]:
+    """Locate and return existing page-level JSON checkpoint files."""
     pattern = re.compile(rf"^{re.escape(json_prefix)}(\d+)\.json$")
     pages: list[tuple[int, Path]] = []
     for path in json_dir.glob(f"{json_prefix}*.json"):
@@ -233,6 +245,7 @@ def run_capture_loop(
     json_prefix: str = "applicant_data_page",
     merged_output: str | Path = "applicant_data.json",
 ) -> list[str]:
+    """Execute main pagination and capture loop across GradCafe survey pages."""
     verify_collection_allowed(start_url)
     output_path = Path(output_dir)
     html_dir = output_path / "html"

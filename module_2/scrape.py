@@ -102,15 +102,18 @@ GRE_QVA_RE = re.compile(
 
 
 def _text(element: Any) -> str:
+    """Normalize element text by stripping and collapsing inner whitespace."""
     return " ".join(element.get_text(" ", strip=True).split())
 
 
 def _first_match(pattern: re.Pattern[str], text: str, group: int = 0) -> str:
+    """Return the matched group text if pattern matches, else empty string."""
     match = pattern.search(text)
     return match.group(group).strip() if match else ""
 
 
 def _parse_primary_row(entry: Any) -> Optional[Dict[str, Any]]:
+    """Parse a main applicant row table entry into a structured dictionary."""
     cells = entry.find_all(["td", "th"], recursive=False)
     cell_text = [_text(cell) for cell in cells]
     full_text = " ".join(value for value in cell_text if value)
@@ -150,6 +153,7 @@ def _parse_primary_row(entry: Any) -> Optional[Dict[str, Any]]:
 
 
 def _merge_detail_text(record: Dict[str, Any], detail_text: str) -> None:
+    """Extract academic metrics, term, and student type from detail sub-rows."""
     term = TERM_RE.search(detail_text)
     if term:
         record["start_term"] = f"{term.group(1).title()} {term.group(2)}"

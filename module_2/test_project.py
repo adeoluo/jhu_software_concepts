@@ -51,6 +51,7 @@ QVA_HTML = """
 class ScrapeTests(unittest.TestCase):
     @patch("auto_next_pages.websocket.create_connection")
     def test_collector_connection_omits_origin_header(self, create_connection):
+        """Verify collector websocket connection suppresses Origin header for security compliance."""
         connection = create_connection.return_value
         connection.recv.return_value = '{"id": 1, "result": {"result": {"value": 20}}}'
 
@@ -65,6 +66,7 @@ class ScrapeTests(unittest.TestCase):
 
     @patch("capture_chrome_html.websocket.create_connection")
     def test_chrome_connection_omits_origin_header(self, create_connection):
+        """Verify single-page capture websocket suppresses Origin header."""
         connection = create_connection.return_value
         connection.recv.return_value = '{"id": 1, "result": {"result": {"value": "<html></html>"}}}'
 
@@ -78,6 +80,7 @@ class ScrapeTests(unittest.TestCase):
         connection.close.assert_called_once_with()
 
     def test_parser_groups_table_subrows_into_applicants(self):
+        """Verify HTML parser correctly groups table sub-rows into structured applicant objects."""
         rows = _extract_rows_from_saved_html(SAMPLE_HTML)
 
         self.assertEqual(len(rows), 2)
@@ -94,6 +97,7 @@ class ScrapeTests(unittest.TestCase):
         self.assertEqual(rows[0]["comments"], "Funding decision is pending.")
 
     def test_cursor_url_is_encoded(self):
+        """Verify survey query parameters are properly URL-encoded."""
         url = build_result_url(cursor="abc+/=", query="computer science")
 
         self.assertEqual(
@@ -102,18 +106,21 @@ class ScrapeTests(unittest.TestCase):
         )
 
     def test_robots_policy_allows_survey_but_not_profile(self):
+        """Verify robots policy parser allows survey page but respects disallowed paths."""
         robots_text = "User-agent: *\nAllow: /\nDisallow: /profile\n"
 
         self.assertTrue(robots_allows("https://www.thegradcafe.com/survey", robots_text))
         self.assertFalse(robots_allows("https://www.thegradcafe.com/profile", robots_text))
 
     def test_cleaner_preserves_raw_source(self):
+        """Verify data cleaner strips surrounding whitespace while preserving raw source fields."""
         cleaned = clean_data([{"program": " CS ", "raw_text": "  original   row  "}])
 
         self.assertEqual(cleaned[0]["program"], "CS")
         self.assertEqual(cleaned[0]["raw_text"], "original row")
 
     def test_next_page_url_ignores_previous_link(self):
+        """Verify pagination link finder explicitly targets 'next' rel or text, ignoring 'previous'."""
         html = """
         <a href="/survey?cursor=previous">Previous</a>
         <a href="/survey?cursor=next">Next</a>
@@ -122,11 +129,13 @@ class ScrapeTests(unittest.TestCase):
         self.assertEqual(_next_page_url_from_html(html), "/survey?cursor=next")
 
     def test_looks_blocked_detects_challenge_page(self):
+        """Verify block detector identifies Cloudflare challenge and error page text."""
         self.assertTrue(_looks_blocked("<title>Just a moment...</title>"))
         self.assertTrue(_looks_blocked("<h1>Access Denied</h1>"))
         self.assertFalse(_looks_blocked(SAMPLE_HTML))
 
     def test_parser_extracts_quantitative_verbal_aw_gre_format(self):
+        """Verify parser handles Quantitative/Verbal/AW formatted GRE score strings."""
         rows = _extract_rows_from_saved_html(QVA_HTML)
 
         self.assertEqual(len(rows), 1)
