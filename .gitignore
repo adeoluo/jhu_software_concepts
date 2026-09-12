@@ -5,3 +5,4 @@
 module_2/.venv/
 module_2/data/
 module_2/llm_hosting/models/
+*.jsonl
