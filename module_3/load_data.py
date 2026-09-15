@@ -166,7 +166,7 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("../module_2/llm_extend_applicant_data.json"),
+        default=Path("llm_extend_applicant_data.json"),
         help="Path to the Module 2 extended JSON file.",
     )
     args = parser.parse_args()

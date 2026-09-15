@@ -77,7 +77,7 @@ SQL_QUERIES: dict[str, str] = {
           AND (
               LOWER(COALESCE(university, '')) LIKE '%georgetown%'
               OR LOWER(COALESCE(university, '')) LIKE '%massachusetts institute of technology%'
-              OR LOWER(COALESCE(university, '')) LIKE '%mit%'
+              OR LOWER(TRIM(COALESCE(university, ''))) = 'mit'
               OR LOWER(COALESCE(university, '')) LIKE '%stanford%'
               OR LOWER(COALESCE(university, '')) LIKE '%carnegie mellon%'
           )
@@ -95,7 +95,7 @@ SQL_QUERIES: dict[str, str] = {
           AND (
               LOWER(COALESCE(llm_generated_university, '')) LIKE '%georgetown%'
               OR LOWER(COALESCE(llm_generated_university, '')) LIKE '%massachusetts institute of technology%'
-              OR LOWER(COALESCE(llm_generated_university, '')) LIKE '%mit%'
+              OR LOWER(TRIM(COALESCE(llm_generated_university, ''))) = 'mit'
               OR LOWER(COALESCE(llm_generated_university, '')) LIKE '%stanford%'
               OR LOWER(COALESCE(llm_generated_university, '')) LIKE '%carnegie mellon%'
           )
