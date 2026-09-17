@@ -86,6 +86,58 @@ def question_10() -> Select[tuple[str | None, int]]:
     )
 
 
+def question_2() -> Select[tuple[float | Decimal | None]]:
+    classification = func.lower(func.trim(Applicant.us_or_international))
+    international_count = func.count(Applicant.p_id).filter(classification == "international")
+    usable_count = func.count(Applicant.p_id).filter(
+        and_(Applicant.us_or_international.is_not(None), func.trim(Applicant.us_or_international) != "")
+    )
+    return select(100.0 * international_count / func.nullif(usable_count, 0))
+
+
+def question_3() -> Select[tuple[Any, Any, Any, Any]]:
+    return select(
+        func.avg(Applicant.gpa),
+        func.avg(Applicant.gre),
+        func.avg(Applicant.gre_v),
+        func.avg(Applicant.gre_aw),
+    )
+
+
+def question_6() -> Select[tuple[float | Decimal | None]]:
+    return select(func.avg(Applicant.gpa)).where(
+        fall_2026(),
+        accepted(),
+        Applicant.gpa.is_not(None),
+    )
+
+
+def question_7() -> Select[tuple[int]]:
+    return select(func.count(Applicant.p_id)).where(
+        or_(
+            func.lower(func.trim(Applicant.university)).contains("johns hopkins"),
+            func.lower(func.trim(Applicant.university)) == "jhu",
+        ),
+        func.lower(func.trim(Applicant.program)).contains("computer science"),
+        func.lower(func.trim(Applicant.degree)).op("~")(
+            r"(^|[^a-z])(masters?|m\\.?s\\.?)([^a-z]|$)"
+        ),
+    )
+
+
+def question_11() -> Select[tuple[str | None, Any]]:
+    classification = func.lower(func.trim(Applicant.us_or_international)).label("classification")
+    return (
+        select(classification, func.avg(Applicant.gpa))
+        .where(
+            classification.in_(["american", "international"]),
+            Applicant.gpa.is_not(None),
+        )
+        .group_by(classification)
+        .order_by(classification)
+    )
+
+
 def run_orm_queries() -> dict[str, Any]:
     statements = {
         "Question 1": question_1(),
@@ -100,6 +152,35 @@ def run_orm_queries() -> dict[str, Any]:
         for question, statement in statements.items():
             results[question] = session.execute(statement).all()
     return results
+
+
+def analysis_snapshot() -> dict[str, Any]:
+    """Return all webpage analyses using Applicant ORM expressions."""
+    with SessionLocal() as session:
+        q3 = session.execute(question_3()).one()
+        q11 = session.execute(question_11()).all()
+        q10 = session.execute(question_10()).all()
+        q8 = session.scalar(question_8())
+        q9 = session.scalar(question_9())
+        return {
+            "q1": session.scalar(question_1()),
+            "q2": session.scalar(question_2()),
+            "q3": {
+                "gpa": q3[0],
+                "gre": q3[1],
+                "gre_v": q3[2],
+                "gre_aw": q3[3],
+            },
+            "q4": session.scalar(question_4()),
+            "q5": session.scalar(question_5()),
+            "q6": session.scalar(question_6()),
+            "q7": session.scalar(question_7()),
+            "q8": q8,
+            "q9": q9,
+            "q10": q10,
+            "q11": q11,
+            "q9_difference": (q9 or 0) - (q8 or 0),
+        }
 
 
 def format_value(value: Any, decimals: int = 2) -> str:
