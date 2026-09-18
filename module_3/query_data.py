@@ -62,7 +62,7 @@ SQL_QUERIES: dict[str, str] = {
         FROM applicants
         WHERE LOWER(COALESCE(university, '')) LIKE ANY (ARRAY['%johns hopkins%', '%jhu%'])
           AND LOWER(COALESCE(program, '')) LIKE '%computer science%'
-                    AND LOWER(COALESCE(degree, '')) ~ '(^|[^a-z])(masters?|m\\.?s\\.?)([^a-z]|$)'
+                    AND LOWER(COALESCE(degree, '')) ~ '(^|[^a-z])(masters?[''’]?|m\\.?s\\.?)([^a-z]|$)'
     """,
     "Question 8": """
         SELECT COUNT(*)

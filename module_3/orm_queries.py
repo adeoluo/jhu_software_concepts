@@ -120,7 +120,7 @@ def question_7() -> Select[tuple[int]]:
         ),
         func.lower(func.trim(Applicant.program)).contains("computer science"),
         func.lower(func.trim(Applicant.degree)).op("~")(
-            r"(^|[^a-z])(masters?|m\\.?s\\.?)([^a-z]|$)"
+            r"(^|[^a-z])(masters?[\u0027\u2019]?|m\\.?s\\.?)([^a-z]|$)"
         ),
     )
 
