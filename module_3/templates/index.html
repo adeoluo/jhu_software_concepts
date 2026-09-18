@@ -19,8 +19,9 @@
                     <button class="button button-secondary" type="submit">Update Analysis</button>
                 </form>
                 <form method="post" action="{{ url_for('pull_data') }}">
-                    <button class="button button-primary" type="submit" {% if pull_running %}disabled{% endif %}>Pull Data</button>
+                    <button class="button button-primary" type="submit" aria-describedby="pull-data-note" title="Check Grad Cafe for new records" {% if pull_running %}disabled{% endif %}>Pull Data</button>
                 </form>
+                <p class="action-note" id="pull-data-note"><strong>Pull Data:</strong> Checks Grad Cafe for new public results, adds only new records, and stops if access is blocked or verification is required.</p>
             </div>
         </header>
 
@@ -61,7 +62,7 @@
             </article>
 
             <article class="panel">
-                <div class="panel-heading"><span class="kicker">Question 10</span><h2>Most represented universities</h2></div>
+                <div class="panel-heading"><span class="kicker">Question 10</span><h2>Which five universities have the most Fall 2026 applicant entries?</h2></div>
                 <ol class="rank-list">
                     {% for university, count in data.q10 %}
                         <li><span>{{ university }}</span><strong>{{ "{:,}".format(count) }}</strong></li>
@@ -82,7 +83,7 @@
             </article>
 
             <article class="panel">
-                <div class="panel-heading"><span class="kicker">Question 11</span><h2>GPA by classification</h2></div>
+                <div class="panel-heading"><span class="kicker">Question 11</span><h2>What is the average GPA for American and international applicants who provide a GPA?</h2></div>
                 <dl class="result-list">
                     {% for classification, average in data.display.q11 %}
                         <div><dt>{{ classification }}</dt><dd>{{ average }}</dd></div>
@@ -92,7 +93,7 @@
         </section>
 
         <footer>
-            <p>Pull Data checks the public Grad Cafe workflow for new records and adds usable rows without duplicating existing primary keys. It may take time and stops when the source presents a block or verification challenge.</p>
+            <p>This analysis describes self-reported entries and is not representative of all applicants.</p>
         </footer>
     </main>
 </body>

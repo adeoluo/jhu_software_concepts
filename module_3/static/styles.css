@@ -23,7 +23,9 @@ body {
 .eyebrow, .kicker { color: var(--coral); font-size: 12px; font-weight: 700; margin: 0 0 12px; }
 h1 { font-size: clamp(2.4rem, 6vw, 5.6rem); line-height: .94; font-weight: 400; max-width: 760px; margin: 0; }
 .lede { color: var(--muted); font-size: 18px; max-width: 570px; margin: 20px 0 0; }
-.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: end; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: end; max-width: 470px; }
+.action-note { flex-basis: 100%; margin: 4px 0 0; color: var(--blue); font: 11px/1.45 "Avenir Next", "Helvetica Neue", sans-serif; text-align: left; }
+.action-note strong { font-weight: 800; }
 .button { border: 0; border-radius: 3px; padding: 12px 16px; cursor: pointer; font: 700 12px "Avenir Next", "Helvetica Neue", sans-serif; text-transform: uppercase; letter-spacing: .06em; }
 .button:disabled { opacity: .45; cursor: not-allowed; }
 .button-primary { color: #fff; background: var(--blue); }
@@ -51,6 +53,6 @@ h1 { font-size: clamp(2.4rem, 6vw, 5.6rem); line-height: .94; font-weight: 400; 
 .result-list div:last-child, .rank-list li:last-child { border-bottom: 0; }
 dt { color: var(--muted); } dd { margin: 0; font-size: 20px; }
 .rank-list { margin: 0; padding-left: 24px; } .rank-list li { padding-left: 8px; } .rank-list strong { font-size: 20px; font-weight: 400; }
-footer { margin-top: 28px; color: var(--muted); font: 13px/1.6 "Avenir Next", "Helvetica Neue", sans-serif; max-width: 830px; }
-@media (max-width: 760px) { .shell { padding: 30px 16px; } .masthead, .content-grid { display: block; } .actions { justify-content: start; margin-top: 24px; } .metric-grid { grid-template-columns: 1fr 1fr; } .panel { margin: 12px 0; } }
+footer { margin-top: 28px; color: var(--muted); font: 12px/1.6 "Avenir Next", "Helvetica Neue", sans-serif; white-space: nowrap; }
+@media (max-width: 760px) { .shell { padding: 30px 16px; } .masthead, .content-grid { display: block; } .actions { justify-content: start; margin-top: 24px; max-width: none; } .action-note { text-align: left; } footer { white-space: normal; } .metric-grid { grid-template-columns: 1fr 1fr; } .panel { margin: 12px 0; } }
 @media (max-width: 440px) { .metric-grid { grid-template-columns: 1fr; } h1 { font-size: 2.8rem; } }

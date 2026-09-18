@@ -4,7 +4,7 @@ import os
 from datetime import date
 from urllib.parse import quote_plus
 
-from sqlalchemy import Date, Float, Integer, String, Text, create_engine
+from sqlalchemy import Date, Float, Integer, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 

@@ -54,21 +54,21 @@ INSERT INTO applicants (
     llm_generated_university
 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (p_id) DO UPDATE SET
-    program = EXCLUDED.program,
-    university = EXCLUDED.university,
-    comments = EXCLUDED.comments,
-    date_added = EXCLUDED.date_added,
-    url = EXCLUDED.url,
-    status = EXCLUDED.status,
-    term = EXCLUDED.term,
-    us_or_international = EXCLUDED.us_or_international,
-    gpa = EXCLUDED.gpa,
-    gre = EXCLUDED.gre,
-    gre_v = EXCLUDED.gre_v,
-    gre_aw = EXCLUDED.gre_aw,
-    degree = EXCLUDED.degree,
-    llm_generated_program = EXCLUDED.llm_generated_program,
-    llm_generated_university = EXCLUDED.llm_generated_university
+    program = COALESCE(EXCLUDED.program, applicants.program),
+    university = COALESCE(EXCLUDED.university, applicants.university),
+    comments = COALESCE(EXCLUDED.comments, applicants.comments),
+    date_added = COALESCE(EXCLUDED.date_added, applicants.date_added),
+    url = COALESCE(EXCLUDED.url, applicants.url),
+    status = COALESCE(EXCLUDED.status, applicants.status),
+    term = COALESCE(EXCLUDED.term, applicants.term),
+    us_or_international = COALESCE(EXCLUDED.us_or_international, applicants.us_or_international),
+    gpa = COALESCE(EXCLUDED.gpa, applicants.gpa),
+    gre = COALESCE(EXCLUDED.gre, applicants.gre),
+    gre_v = COALESCE(EXCLUDED.gre_v, applicants.gre_v),
+    gre_aw = COALESCE(EXCLUDED.gre_aw, applicants.gre_aw),
+    degree = COALESCE(EXCLUDED.degree, applicants.degree),
+    llm_generated_program = COALESCE(EXCLUDED.llm_generated_program, applicants.llm_generated_program),
+    llm_generated_university = COALESCE(EXCLUDED.llm_generated_university, applicants.llm_generated_university)
 """
 
 RESULT_ID_RE = re.compile(r"/result/(\d+)", re.IGNORECASE)

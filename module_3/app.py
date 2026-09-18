@@ -26,20 +26,25 @@ pull_state: dict[str, Any] = {
 
 
 def pull_is_running() -> bool:
+    """Return whether a Pull Data operation is currently active."""
     with _state_lock:
         return bool(pull_state["running"])
 
 
 def _set_pull_state(running: bool, message: str) -> None:
+    """Update the shared Pull Data status shown by the webpage."""
     with _state_lock:
         pull_state["running"] = running
         pull_state["message"] = message
 
 
 def _run_pull_data() -> None:
+    """Run the protected scraper and load its new records into PostgreSQL."""
+    lock_acquired = False
     try:
         with LOCK_PATH.open("w", encoding="utf-8") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_acquired = True
             scrape_command = [
                 sys.executable,
                 "auto_next_pages.py",
@@ -82,10 +87,11 @@ def _run_pull_data() -> None:
     except Exception as exc:  # pragma: no cover - protects the background request
         _set_pull_state(False, f"Pull Data failed: {exc}")
     finally:
-        try:
-            LOCK_PATH.unlink()
-        except FileNotFoundError:
-            pass
+        if lock_acquired:
+            try:
+                LOCK_PATH.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def format_number(value: Any, decimals: int = 2) -> str:
@@ -97,6 +103,7 @@ def format_number(value: Any, decimals: int = 2) -> str:
 
 
 def page_data() -> dict[str, Any]:
+    """Build formatted analysis values for the SQLAlchemy-backed template."""
     data = analysis_snapshot()
     data["display"] = {
         "q1": format_number(data["q1"], 0),
@@ -119,6 +126,7 @@ def page_data() -> dict[str, Any]:
 
 @app.get("/")
 def index() -> str:
+    """Render the current database analysis page."""
     return render_template(
         "index.html",
         data=page_data(),
@@ -129,11 +137,13 @@ def index() -> str:
 
 @app.post("/pull-data")
 def pull_data() -> Any:
-    if pull_is_running():
-        flash("Pull Data is already running. Please wait for it to finish.", "warning")
-        return redirect(url_for("index"))
-
-    _set_pull_state(True, "Pull Data is retrieving newly available Grad Cafe records.")
+    """Start Pull Data once, or report that an existing pull is active."""
+    with _state_lock:
+        if pull_state["running"]:
+            flash("Pull Data is already running. Please wait for it to finish.", "warning")
+            return redirect(url_for("index"))
+        pull_state["running"] = True
+        pull_state["message"] = "Pull Data is retrieving newly available Grad Cafe records."
     threading.Thread(target=_run_pull_data, daemon=True).start()
     flash("Pull Data started. Update Analysis will show the database when the pull finishes.", "info")
     return redirect(url_for("index"))
@@ -141,6 +151,7 @@ def pull_data() -> Any:
 
 @app.post("/update-analysis")
 def update_analysis() -> Any:
+    """Refresh the page from PostgreSQL without starting a scrape."""
     if pull_is_running():
         flash("New data is currently being retrieved. The displayed analysis is from the latest completed database state.", "warning")
     else:
@@ -149,4 +160,4 @@ def update_analysis() -> Any:
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host="127.0.0.1", port=5000)
+    app.run(debug=False, host="127.0.0.1", port=int(os.getenv("PORT", "5050")))
