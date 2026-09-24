@@ -1,3 +1,5 @@
+"""Generate ``limitations.pdf``, the written discussion of Grad Cafe data limitations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,6 +17,7 @@ PARAGRAPHS = [
 
 
 def build_pdf(output_path: Path) -> None:
+    """Write the limitations discussion to ``output_path``."""
     styles = getSampleStyleSheet()
     body = styles["BodyText"]
     body.fontSize = 11

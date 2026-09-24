@@ -1,3 +1,5 @@
+"""SQLAlchemy model for the Module 3 ``applicants`` table and database connection settings."""
+
 from __future__ import annotations
 
 import os
@@ -9,11 +11,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
 class Base(DeclarativeBase):
-    pass
+    """Declarative base for the ORM models."""
+
+
+_override_url: str | None = None
 
 
 def database_url() -> str:
-    """Build the PostgreSQL URL from DATABASE_URL or PG* environment variables."""
+    """Build the PostgreSQL URL from an override, DATABASE_URL, or PG* environment variables."""
+    if _override_url:
+        return _override_url
     configured_url = os.getenv("DATABASE_URL")
     if configured_url:
         return configured_url
@@ -34,11 +41,29 @@ def database_url() -> str:
     return f"postgresql+psycopg://{credentials}@{host}:{port}/{database}"
 
 
-engine = create_engine(database_url(), pool_pre_ping=True)
+def sqlalchemy_url(url: str) -> str:
+    """Make plain ``postgresql://`` URLs use the psycopg 3 driver."""
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
+engine = create_engine(sqlalchemy_url(database_url()), pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+def use_database(url: str) -> None:
+    """Point every loader, query, and ORM session at ``url`` (used by ``create_app`` and tests)."""
+    global _override_url, engine
+    _override_url = url
+    engine.dispose()
+    engine = create_engine(sqlalchemy_url(url), pool_pre_ping=True)
+    SessionLocal.configure(bind=engine)
+
+
 class Applicant(Base):
+    """One Grad Cafe result row. The schema is unchanged from Module 3; ``p_id`` is the uniqueness key."""
+
     __tablename__ = "applicants"
 
     p_id: Mapped[int] = mapped_column(Integer, primary_key=True)

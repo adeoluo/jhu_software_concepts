@@ -1,3 +1,5 @@
+"""Generate ``query_results.pdf``: each SQL question with its answer, query, and explanation."""
+
 from __future__ import annotations
 
 import argparse
@@ -32,6 +34,7 @@ EXPLANATIONS = {
 
 
 def format_value(value: Any) -> str:
+    """Format floats/Decimals with two decimals; ``None`` becomes ``N/A``."""
     if value is None:
         return "N/A"
     if isinstance(value, (float, Decimal)):
@@ -40,6 +43,7 @@ def format_value(value: Any) -> str:
 
 
 def result_lines(question: str, results: dict[str, Any]) -> list[str]:
+    """Return the display lines for one question's rows."""
     rows = results[question]
     if question == "Question 1":
         return [f"Fall 2026 applicant count: {rows[0][0]:,}"]
@@ -64,6 +68,7 @@ def result_lines(question: str, results: dict[str, Any]) -> list[str]:
 
 
 def build_pdf(output_path: Path) -> None:
+    """Run the SQL queries and write the formatted report to ``output_path``."""
     results = run_queries()
     styles = getSampleStyleSheet()
     title_style = styles["Title"]
@@ -123,6 +128,7 @@ def build_pdf(output_path: Path) -> None:
 
 
 def main() -> None:
+    """Command-line entry point: ``python generate_query_results_pdf.py --output <file.pdf>``."""
     parser = argparse.ArgumentParser(description="Generate the Module 3 SQL analysis PDF.")
     parser.add_argument("--output", type=Path, default=Path("query_results.pdf"))
     args = parser.parse_args()

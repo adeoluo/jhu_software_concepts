@@ -1,3 +1,5 @@
+"""Extract step: robots.txt compliance checks and parsing of saved Grad Cafe survey HTML."""
+
 from __future__ import annotations
 
 import argparse

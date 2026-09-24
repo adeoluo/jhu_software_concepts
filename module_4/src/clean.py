@@ -1,3 +1,5 @@
+"""Transform step: normalize whitespace, missing values, and status labels in scraped rows."""
+
 from __future__ import annotations
 
 import argparse

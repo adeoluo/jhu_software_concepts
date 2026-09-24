@@ -1,11 +1,47 @@
+"""Raw SQL answers to the Module 3 analysis questions, plus a simple row query."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any
 
 import psycopg
+from psycopg.rows import dict_row
 
 from load_data import psycopg_connection_string
+
+
+APPLICANT_FIELDS: tuple[str, ...] = (
+    "p_id",
+    "program",
+    "university",
+    "comments",
+    "date_added",
+    "url",
+    "status",
+    "term",
+    "us_or_international",
+    "gpa",
+    "gre",
+    "gre_v",
+    "gre_aw",
+    "degree",
+    "llm_generated_program",
+    "llm_generated_university",
+)
+
+
+def fetch_applicants(limit: int | None = None) -> list[dict[str, Any]]:
+    """Return applicant rows as dicts keyed by the Module 3 schema fields, ordered by ``p_id``."""
+    sql = f"SELECT {', '.join(APPLICANT_FIELDS)} FROM applicants ORDER BY p_id"
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (limit,)
+    with psycopg.connect(psycopg_connection_string()) as connection:
+        with connection.cursor(row_factory=dict_row) as cursor:
+            cursor.execute(sql, params)
+            return list(cursor.fetchall())
 
 
 SQL_QUERIES: dict[str, str] = {
@@ -137,6 +173,7 @@ QUESTION_TEXT: dict[str, str] = {
 
 
 def run_queries() -> dict[str, Any]:
+    """Run every query in ``SQL_QUERIES`` and return the fetched rows keyed by question."""
     results: dict[str, Any] = {}
     with psycopg.connect(psycopg_connection_string()) as connection:
         with connection.cursor() as cursor:
@@ -147,12 +184,14 @@ def run_queries() -> dict[str, Any]:
 
 
 def format_number(value: Any, decimals: int = 2) -> str:
+    """Format a number with a fixed number of decimals; ``None`` becomes ``N/A``."""
     if value is None:
         return "N/A"
     return f"{float(value):.{decimals}f}"
 
 
 def format_results(results: dict[str, Any]) -> Iterable[str]:
+    """Yield one human-readable line per answer from ``run_queries`` output."""
     question_1 = results["Question 1"][0][0]
     yield f"Fall 2026 applicant count: {question_1:,}"
 
@@ -186,6 +225,7 @@ def format_results(results: dict[str, Any]) -> Iterable[str]:
 
 
 def main() -> None:
+    """Command-line entry point: print every SQL answer."""
     results = run_queries()
     for line in format_results(results):
         print(line)

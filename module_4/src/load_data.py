@@ -1,3 +1,10 @@
+"""Load step of the ETL pipeline: normalize scraped records and upsert them into PostgreSQL.
+
+Rows are keyed by ``p_id`` and written with ``INSERT ... ON CONFLICT (p_id) DO UPDATE``
+inside one transaction, so reloading the same data never creates duplicates and a
+failed batch leaves no partial writes.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -76,6 +83,7 @@ DATE_FORMATS = ("%b %d, %Y", "%B %d, %Y", "%b %d %Y", "%Y-%m-%d")
 
 
 def empty_to_none(value: Any) -> Any:
+    """Return ``None`` for missing or blank values; strip surrounding whitespace from strings."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -85,6 +93,7 @@ def empty_to_none(value: Any) -> Any:
 
 
 def parse_date(value: Any) -> date | None:
+    """Parse a Grad Cafe date such as ``Sep 10, 2026``; return ``None`` if unrecognized."""
     value = empty_to_none(value)
     if value is None:
         return None
@@ -101,6 +110,7 @@ def parse_date(value: Any) -> date | None:
 
 
 def parse_float(value: Any) -> float | None:
+    """Parse a numeric score, ignoring thousands separators; return ``None`` if not numeric."""
     value = empty_to_none(value)
     if value is None:
         return None
@@ -120,6 +130,7 @@ def parse_gre_quantitative(value: Any) -> float | None:
 
 
 def stable_id(record: dict[str, Any]) -> int:
+    """Return the uniqueness key: the ``/result/<id>`` from the URL, else a deterministic hash."""
     url = str(empty_to_none(record.get("url")) or "")
     match = RESULT_ID_RE.search(url)
     if match:
@@ -134,6 +145,7 @@ def stable_id(record: dict[str, Any]) -> int:
 
 
 def record_to_row(record: dict[str, Any]) -> tuple[Any, ...]:
+    """Map a scraper/LLM record to a tuple in ``applicants`` column order."""
     return (
         stable_id(record),
         empty_to_none(record.get("program")),
@@ -161,6 +173,10 @@ def record_to_row(record: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def load_records(input_path: Path) -> list[dict[str, Any]]:
+    """Read a JSON list of records, skipping non-object entries.
+
+    :raises ValueError: if the file does not contain a JSON list.
+    """
     with input_path.open("r", encoding="utf-8") as handle:
         records = json.load(handle)
     if not isinstance(records, list):
@@ -169,10 +185,12 @@ def load_records(input_path: Path) -> list[dict[str, Any]]:
 
 
 def psycopg_connection_string() -> str:
+    """Return the configured database URL in the form psycopg expects."""
     return database_url().replace("postgresql+psycopg://", "postgresql://", 1)
 
 
 def load_into_database(records: Iterable[dict[str, Any]]) -> int:
+    """Create the table if needed and upsert ``records`` in one transaction; return the row count."""
     rows = [record_to_row(record) for record in records]
     with psycopg.connect(psycopg_connection_string()) as connection:
         with connection.cursor() as cursor:
@@ -183,6 +201,7 @@ def load_into_database(records: Iterable[dict[str, Any]]) -> int:
 
 
 def main() -> None:
+    """Command-line entry point: ``python load_data.py --input <file.json>``."""
     parser = argparse.ArgumentParser(description="Load cleaned Grad Cafe data into PostgreSQL.")
     parser.add_argument(
         "--input",

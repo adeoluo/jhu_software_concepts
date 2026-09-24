@@ -1,3 +1,9 @@
+"""Capture Grad Cafe survey pages from a user-verified Chrome tab via the DevTools protocol.
+
+The loop saves each page's HTML and parsed JSON, resumes from the last saved page, and
+stops (rather than retrying or bypassing) on any challenge, block, or rate-limit page.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -58,7 +64,7 @@ def _list_targets() -> list[dict[str, Any]]:
     """Query Chrome DevTools for open tab target descriptors."""
     try:
         return _request_json(f"{CHROME_DEBUG_URL}/json/list")
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise RuntimeError(
             "Chrome remote debugging is not available. Start Chrome with: "
             'open -a "Google Chrome" --args --remote-debugging-port=9222'

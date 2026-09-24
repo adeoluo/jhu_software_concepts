@@ -1,3 +1,5 @@
+"""Save the HTML of the Grad Cafe page currently open in Chrome (DevTools protocol)."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +25,7 @@ def _list_targets() -> list[dict[str, Any]]:
     """Query Chrome DevTools HTTP endpoint for active page targets."""
     try:
         return _request_json(f"{CHROME_DEBUG_URL}/json/list")
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise RuntimeError(
             "Chrome remote debugging is not available. Start Chrome with: "
             'open -a "Google Chrome" --args --remote-debugging-port=9222'

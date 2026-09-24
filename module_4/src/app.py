@@ -1,119 +1,105 @@
+"""Flask web layer for the Grad Cafe analysis service.
+
+``create_app`` builds the application. The scraper, loader, and analysis query
+are injectable so tests can run without the network or a long scrape.
+"""
+
 from __future__ import annotations
 
-import fcntl
 import os
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, flash, redirect, render_template, url_for
+from flask import Flask, jsonify, render_template
 
+import models
+from load_data import load_into_database, load_records
 from orm_queries import analysis_snapshot
 
 
 BASE_DIR = Path(__file__).resolve().parent
-LOCK_PATH = BASE_DIR / "pull_data.lock"
-app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "module-3-local-development-key")
 
-_state_lock = threading.Lock()
-pull_state: dict[str, Any] = {
-    "running": False,
-    "message": "No data pull has been started.",
-}
+Scraper = Callable[[], list[dict[str, Any]]]
+Loader = Callable[[list[dict[str, Any]]], int]
+Query = Callable[[], dict[str, Any]]
 
 
-def pull_is_running() -> bool:
-    """Return whether a Pull Data operation is currently active."""
-    with _state_lock:
-        return bool(pull_state["running"])
+class PullState:
+    """Thread-safe busy flag shared by Pull Data and Update Analysis."""
+
+    def __init__(self) -> None:
+        """Start idle with a default status message."""
+        self._lock = threading.Lock()
+        self.running = False
+        self.message = "No data pull has been started."
+
+    def try_start(self) -> bool:
+        """Mark a pull as running; return ``False`` if one is already active."""
+        with self._lock:
+            if self.running:
+                return False
+            self.running = True
+            self.message = "Pull Data is retrieving newly available Grad Cafe records."
+            return True
+
+    def finish(self, message: str) -> None:
+        """Clear the busy flag and record the outcome shown on the page."""
+        with self._lock:
+            self.running = False
+            self.message = message
 
 
-def _set_pull_state(running: bool, message: str) -> None:
-    """Update the shared Pull Data status shown by the webpage."""
-    with _state_lock:
-        pull_state["running"] = running
-        pull_state["message"] = message
-
-
-def _run_pull_data() -> None:
-    """Run the protected scraper and load its new records into PostgreSQL."""
-    lock_acquired = False
-    try:
-        with LOCK_PATH.open("w", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            lock_acquired = True
-            scrape_command = [
-                sys.executable,
-                "auto_next_pages.py",
-                "--start-url",
-                "https://www.thegradcafe.com/survey",
-                "--target-rows",
-                "100000",
-                "--output-dir",
-                "data",
-                "--merged-output",
-                "applicant_data.json",
-            ]
-            scrape_result = subprocess.run(
-                scrape_command,
-                cwd=BASE_DIR,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if scrape_result.returncode != 0:
-                detail = scrape_result.stderr.strip() or "The scraper stopped without an error message."
-                _set_pull_state(False, f"Pull Data stopped: {detail[-500:]}")
-                return
-
-            load_result = subprocess.run(
-                [sys.executable, "load_data.py", "--input", "applicant_data.json"],
-                cwd=BASE_DIR,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if load_result.returncode != 0:
-                detail = load_result.stderr.strip() or "The database loader stopped without an error message."
-                _set_pull_state(False, f"New data was captured, but database loading failed: {detail[-500:]}")
-                return
-
-            _set_pull_state(False, "Pull Data finished. New usable records are now available in the database.")
-    except BlockingIOError:
-        _set_pull_state(False, "Another Pull Data operation is already running.")
-    except Exception as exc:  # pragma: no cover - protects the background request
-        _set_pull_state(False, f"Pull Data failed: {exc}")
-    finally:
-        if lock_acquired:
-            try:
-                LOCK_PATH.unlink()
-            except FileNotFoundError:
-                pass
+def scrape_new_records() -> list[dict[str, Any]]:
+    """Run the Module 3 browser-capture scraper and return the merged applicant records."""
+    command = [
+        sys.executable,
+        "auto_next_pages.py",
+        "--start-url",
+        "https://www.thegradcafe.com/survey",
+        "--target-rows",
+        "100000",
+        "--output-dir",
+        "data",
+        "--merged-output",
+        "applicant_data.json",
+    ]
+    result = subprocess.run(command, cwd=BASE_DIR, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "The scraper stopped without an error message."
+        raise RuntimeError(f"Pull Data stopped: {detail[-500:]}")
+    return load_records(BASE_DIR / "applicant_data.json")
 
 
 def format_number(value: Any, decimals: int = 2) -> str:
+    """Format a number with thousands separators and a fixed number of decimals."""
     if value is None:
         return "N/A"
-    if isinstance(value, (float, int)):
-        return f"{value:,.{decimals}f}" if decimals else f"{value:,}"
-    return f"{value:.{decimals}f}" if decimals else f"{value:,}"
+    return f"{value:,.{decimals}f}" if decimals else f"{value:,}"
 
 
-def page_data() -> dict[str, Any]:
-    """Build formatted analysis values for the SQLAlchemy-backed template."""
-    data = analysis_snapshot()
+def format_percent(value: Any) -> str:
+    """Format a percentage with exactly two decimals, e.g. ``39.28%``."""
+    if value is None:
+        return "N/A"
+    return f"{format_number(value)}%"
+
+
+def page_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Add display-ready strings to an analysis snapshot for the template."""
+    data = dict(data)
     data["display"] = {
         "q1": format_number(data["q1"], 0),
-        "q2": f"{format_number(data['q2'])}%",
+        "q2": format_percent(data["q2"]),
         "q3_gpa": format_number(data["q3"]["gpa"]),
         "q3_gre": format_number(data["q3"]["gre"]),
         "q3_gre_v": format_number(data["q3"]["gre_v"]),
         "q3_gre_aw": format_number(data["q3"]["gre_aw"]),
         "q4": format_number(data["q4"]),
-        "q5": f"{format_number(data['q5'])}%",
+        "q5": format_percent(data["q5"]),
         "q6": format_number(data["q6"]),
         "q7": format_number(data["q7"], 0),
         "q8": format_number(data["q8"], 0),
@@ -124,39 +110,76 @@ def page_data() -> dict[str, Any]:
     return data
 
 
-@app.get("/")
-def index() -> str:
-    """Render the current database analysis page."""
-    return render_template(
-        "index.html",
-        data=page_data(),
-        pull_running=pull_is_running(),
-        pull_message=pull_state["message"],
-    )
+def create_app(
+    config: dict[str, Any] | None = None,
+    *,
+    scraper: Scraper | None = None,
+    loader: Loader | None = None,
+    query: Query | None = None,
+) -> Flask:
+    """Build the Flask app.
+
+    :param config: Flask config overrides. ``DATABASE_URL`` repoints all database access.
+    :param scraper: Returns raw applicant records; defaults to the Module 3 scraper.
+    :param loader: Writes records to PostgreSQL and returns the count; defaults to ``load_into_database``.
+    :param query: Returns the analysis snapshot; defaults to ``analysis_snapshot``.
+    """
+    app = Flask(__name__)
+    app.config.update(DATABASE_URL=os.getenv("DATABASE_URL"))
+    app.config.update(config or {})
+    if config and config.get("DATABASE_URL"):
+        models.use_database(config["DATABASE_URL"])
+
+    scrape = scraper or scrape_new_records
+    load = loader or load_into_database
+    analyze = query or analysis_snapshot
+    state = PullState()
+    app.extensions["pull_state"] = state
+    app.extensions["analysis"] = None
+
+    def current_analysis() -> dict[str, Any]:
+        """Return the cached snapshot, computing it on first use."""
+        if app.extensions["analysis"] is None:
+            app.extensions["analysis"] = analyze()
+        return app.extensions["analysis"]
+
+    @app.get("/")
+    @app.get("/analysis")
+    def analysis() -> str:
+        """Render the Analysis page from the latest refreshed snapshot."""
+        return render_template(
+            "index.html",
+            data=page_data(current_analysis()),
+            pull_running=state.running,
+            pull_message=state.message,
+        )
+
+    @app.post("/pull-data")
+    def pull_data() -> Any:
+        """Scrape and load new records; 409 if a pull is already running."""
+        if not state.try_start():
+            return jsonify(ok=False, busy=True), 409
+        try:
+            count = load(scrape())
+        except Exception:
+            app.logger.exception("Pull Data failed")
+            state.finish("Pull Data failed. No records were changed; see the server log.")
+            return jsonify(ok=False, busy=False, error="Pull Data failed."), 500
+        state.finish(f"Pull Data finished. Processed {count:,} records.")
+        return jsonify(ok=True, count=count), 200
+
+    @app.post("/update-analysis")
+    def update_analysis() -> Any:
+        """Refresh the analysis from PostgreSQL; 409 and no refresh while a pull is running."""
+        if state.running:
+            return jsonify(ok=False, busy=True), 409
+        app.extensions["analysis"] = analyze()
+        return jsonify(ok=True), 200
+
+    return app
 
 
-@app.post("/pull-data")
-def pull_data() -> Any:
-    """Start Pull Data once, or report that an existing pull is active."""
-    with _state_lock:
-        if pull_state["running"]:
-            flash("Pull Data is already running. Please wait for it to finish.", "warning")
-            return redirect(url_for("index"))
-        pull_state["running"] = True
-        pull_state["message"] = "Pull Data is retrieving newly available Grad Cafe records."
-    threading.Thread(target=_run_pull_data, daemon=True).start()
-    flash("Pull Data started. Update Analysis will show the database when the pull finishes.", "info")
-    return redirect(url_for("index"))
-
-
-@app.post("/update-analysis")
-def update_analysis() -> Any:
-    """Refresh the page from PostgreSQL without starting a scrape."""
-    if pull_is_running():
-        flash("New data is currently being retrieved. The displayed analysis is from the latest completed database state.", "warning")
-    else:
-        flash("Analysis updated from the current PostgreSQL database.", "success")
-    return redirect(url_for("index"))
+app = create_app()
 
 
 if __name__ == "__main__":
