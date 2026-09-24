@@ -1,0 +1,4 @@
+.pytest_cache/
+docs/_build/doctrees/
+src/data/
+src/pull_data.lock
