@@ -48,16 +48,22 @@
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#flask-app-and-routes-app">Flask app and routes — <code class="docutils literal notranslate"><span class="pre">app</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#app.PullState"><code class="docutils literal notranslate"><span class="pre">PullState</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#app.PullState.try_start"><code class="docutils literal notranslate"><span class="pre">PullState.try_start()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#app.PullState.finish"><code class="docutils literal notranslate"><span class="pre">PullState.finish()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#route-handlers">Route handlers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#app.analysis"><code class="docutils literal notranslate"><span class="pre">analysis()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.pull_data"><code class="docutils literal notranslate"><span class="pre">pull_data()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.update_analysis"><code class="docutils literal notranslate"><span class="pre">update_analysis()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="#app.scrape_new_records"><code class="docutils literal notranslate"><span class="pre">scrape_new_records()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#app.format_number"><code class="docutils literal notranslate"><span class="pre">format_number()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#app.format_percent"><code class="docutils literal notranslate"><span class="pre">format_percent()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#app.page_data"><code class="docutils literal notranslate"><span class="pre">page_data()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#app.create_app"><code class="docutils literal notranslate"><span class="pre">create_app()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#module-app">App factory and helpers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#app.PullState"><code class="docutils literal notranslate"><span class="pre">PullState</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.scrape_new_records"><code class="docutils literal notranslate"><span class="pre">scrape_new_records()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.format_number"><code class="docutils literal notranslate"><span class="pre">format_number()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.format_percent"><code class="docutils literal notranslate"><span class="pre">format_percent()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.page_data"><code class="docutils literal notranslate"><span class="pre">page_data()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.current_analysis"><code class="docutils literal notranslate"><span class="pre">current_analysis()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#app.create_app"><code class="docutils literal notranslate"><span class="pre">create_app()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#module-scrape">Scraper — <code class="docutils literal notranslate"><span class="pre">scrape</span></code></a><ul>
@@ -216,7 +222,56 @@
 </tr>
 </tbody>
 </table>
-<p id="module-app">Flask web layer for the Grad Cafe analysis service.</p>
+<section id="route-handlers">
+<h3>Route handlers<a class="headerlink" href="#route-handlers" title="Link to this heading"></a></h3>
+<dl class="py function">
+<dt class="sig sig-object py" id="app.analysis">
+<span class="sig-prename descclassname"><span class="pre">app.</span></span><span class="sig-name descname"><span class="pre">analysis</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/app.html#analysis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.analysis" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/</span></code> and <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/analysis</span></code>: render the Analysis page.</p>
+<p>Shows the latest snapshot stored by Update Analysis (or computed on first load),
+the Pull Data / Update Analysis buttons, and the current pull status.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="app.pull_data">
+<span class="sig-prename descclassname"><span class="pre">app.</span></span><span class="sig-name descname"><span class="pre">pull_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/app.html#pull_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.pull_data" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/pull-data</span></code>: scrape new records and pass them to the loader.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>200 <code class="docutils literal notranslate"><span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;count&quot;:</span> <span class="pre">N}</span></code> on success; 409 <code class="docutils literal notranslate"><span class="pre">{&quot;ok&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;busy&quot;:</span> <span class="pre">true}</span></code>
+if a pull is already running; 500 <code class="docutils literal notranslate"><span class="pre">{&quot;ok&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;busy&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;error&quot;:</span> <span class="pre">...}</span></code> if
+scraping or loading fails (the loader’s single transaction leaves no partial writes).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Any</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="app.update_analysis">
+<span class="sig-prename descclassname"><span class="pre">app.</span></span><span class="sig-name descname"><span class="pre">update_analysis</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/app.html#update_analysis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.update_analysis" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/update-analysis</span></code>: re-run the analysis query and store the new snapshot.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>200 <code class="docutils literal notranslate"><span class="pre">{&quot;ok&quot;:</span> <span class="pre">true}</span></code> when not busy; 409 <code class="docutils literal notranslate"><span class="pre">{&quot;ok&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;busy&quot;:</span> <span class="pre">true}</span></code> while
+a pull is running, in which case the stored snapshot is left unchanged.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Any</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-app">
+<span id="app-factory-and-helpers"></span><h3>App factory and helpers<a class="headerlink" href="#module-app" title="Link to this heading"></a></h3>
+<p>Flask web layer for the Grad Cafe analysis service.</p>
 <p><code class="docutils literal notranslate"><span class="pre">create_app</span></code> builds the application. The scraper, loader, and analysis query
 are injectable so tests can run without the network or a long scrape.</p>
 <dl class="py class">
@@ -309,16 +364,28 @@ are injectable so tests can run without the network or a long scrape.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="app.current_analysis">
+<span class="sig-prename descclassname"><span class="pre">app.</span></span><span class="sig-name descname"><span class="pre">current_analysis</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/app.html#current_analysis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.current_analysis" title="Link to this definition"></a></dt>
+<dd><p>Return the app’s cached analysis snapshot, running the injected query on first use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict[str, <em>Any</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="app.create_app">
 <span class="sig-prename descclassname"><span class="pre">app.</span></span><span class="sig-name descname"><span class="pre">create_app</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">scraper</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/app.html#create_app"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.create_app" title="Link to this definition"></a></dt>
-<dd><p>Build the Flask app.</p>
+<dd><p>Build the Flask app and register its routes.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – Flask config overrides. <code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code> repoints all database access.</p></li>
-<li><p><strong>scraper</strong> (<em>Callable</em><em>[</em><em>[</em><em>]</em><em>, </em><em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Returns raw applicant records; defaults to the Module 3 scraper.</p></li>
-<li><p><strong>loader</strong> (<em>Callable</em><em>[</em><em>[</em><em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>, </em><em>int</em><em>] </em><em>| </em><em>None</em>) – Writes records to PostgreSQL and returns the count; defaults to <code class="docutils literal notranslate"><span class="pre">load_into_database</span></code>.</p></li>
-<li><p><strong>query</strong> (<em>Callable</em><em>[</em><em>[</em><em>]</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Returns the analysis snapshot; defaults to <code class="docutils literal notranslate"><span class="pre">analysis_snapshot</span></code>.</p></li>
+<li><p><strong>scraper</strong> (<em>Callable</em><em>[</em><em>[</em><em>]</em><em>, </em><em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Returns raw applicant records; defaults to <a class="reference internal" href="#app.scrape_new_records" title="app.scrape_new_records"><code class="xref py py-func docutils literal notranslate"><span class="pre">scrape_new_records()</span></code></a>.</p></li>
+<li><p><strong>loader</strong> (<em>Callable</em><em>[</em><em>[</em><em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>, </em><em>int</em><em>] </em><em>| </em><em>None</em>) – Writes records to PostgreSQL and returns the count; defaults to
+<a class="reference internal" href="#load_data.load_into_database" title="load_data.load_into_database"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_data.load_into_database()</span></code></a>.</p></li>
+<li><p><strong>query</strong> (<em>Callable</em><em>[</em><em>[</em><em>]</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Returns the analysis snapshot; defaults to <a class="reference internal" href="#orm_queries.analysis_snapshot" title="orm_queries.analysis_snapshot"><code class="xref py py-func docutils literal notranslate"><span class="pre">orm_queries.analysis_snapshot()</span></code></a>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -327,6 +394,7 @@ are injectable so tests can run without the network or a long scrape.</p>
 </dl>
 </dd></dl>
 
+</section>
 </section>
 <section id="module-scrape">
 <span id="scraper-scrape"></span><h2>Scraper — <code class="docutils literal notranslate"><span class="pre">scrape</span></code><a class="headerlink" href="#module-scrape" title="Link to this heading"></a></h2>

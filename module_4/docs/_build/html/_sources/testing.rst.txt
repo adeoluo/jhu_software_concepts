@@ -4,7 +4,8 @@ Testing Guide
 Running the suite
 -----------------
 
-From the repository root, with ``DATABASE_URL`` pointing to a database whose name contains ``test``:
+Run from the **repository root** (``jhu_software_concepts``), with ``DATABASE_URL`` pointing
+to a database whose name contains ``test``:
 
 .. code-block:: bash
 
@@ -14,6 +15,12 @@ From the repository root, with ``DATABASE_URL`` pointing to a database whose nam
 ``module_4/pytest.ini`` adds ``--cov=module_4/src --cov-report=term-missing
 --cov-fail-under=100``. The run fails unless every line in ``src/`` is covered. The
 suite finishes in a few seconds and never touches the internet.
+
+.. note::
+
+   ``--cov=module_4/src`` is a path relative to the repository root. If you run pytest from
+   inside ``module_4/``, coverage finds no files and reports 0%. From ``module_4/`` use
+   ``pytest -m "web or buttons or analysis or db or integration" --cov=src`` instead.
 
 Markers
 -------

@@ -14,7 +14,20 @@ Route                      Method  Response
 ``/update-analysis``       POST    200 ``{"ok": true}``; 409 ``{"busy": true}`` while a pull runs
 =========================  ======  ==========================================================
 
+Route handlers
+~~~~~~~~~~~~~~
+
+.. autofunction:: app.analysis
+
+.. autofunction:: app.pull_data
+
+.. autofunction:: app.update_analysis
+
+App factory and helpers
+~~~~~~~~~~~~~~~~~~~~~~~
+
 .. automodule:: app
+   :exclude-members: analysis, pull_data, update_analysis, app
 
 Scraper — ``scrape``
 --------------------

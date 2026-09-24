@@ -64,12 +64,17 @@ Open http://127.0.0.1:5050/analysis.
 
 ## Run the tests
 
+Run from the **repository root** (`jhu_software_concepts`):
+
 ```bash
 export DATABASE_URL=postgresql://localhost:5432/gradcafe_test
 python -m pytest module_4/tests -m "web or buttons or analysis or db or integration"
 ```
 
-Run from the repository root. `pytest.ini` enforces `--cov=module_4/src --cov-fail-under=100`.
+`pytest.ini` enforces `--cov=module_4/src --cov-fail-under=100`. That path is relative to the
+repository root, so running from inside `module_4/` reports 0% coverage. From `module_4/`, use
+`pytest -m "web or buttons or analysis or db or integration" --cov=src` instead.
+
 The tests refuse to run unless the database name contains `test`, because they truncate the table.
 Latest result: **82 passed, 100.00% coverage** (see `coverage_summary.txt`).
 
