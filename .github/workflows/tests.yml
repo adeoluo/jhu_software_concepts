@@ -12,7 +12,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -23,7 +23,11 @@ jobs:
           --health-cmd="pg_isready -U postgres -d gradcafe"
           --health-interval=10s
           --health-timeout=5s
-          --retries=5
+          --retries=10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gradcafe
+      PYTHONPATH: .
 
     steps:
       - name: Check out repository
@@ -40,8 +44,6 @@ jobs:
           python -m pip install -r module_4/requirements.txt
 
       - name: Run pytest with coverage
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gradcafe
         run: |
-          pytest module_4/tests -m "web or buttons or analysis or db or integration" \
+          python -m pytest module_4/tests -m "web or buttons or analysis or db or integration" \
             --cov=module_4/src --cov-report=term-missing --cov-fail-under=100
