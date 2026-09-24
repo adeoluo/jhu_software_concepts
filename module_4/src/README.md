@@ -1,5 +1,13 @@
 # Module 3: Database Queries, SQLAlchemy, and Dynamic Webpages
 
+> **Module 4 note:** this is the Module 3 README, copied unchanged with the rest of the
+> Module 3 code. For Module 4 setup, tests, CI, and documentation, see
+> [`../README.md`](../README.md). Differences in Module 4: the app is built by
+> `create_app()`; **Pull Data** (`POST /pull-data`) runs the scrape and load within the
+> request and returns JSON (`{"ok": true}`, or 409 `{"busy": true}` while a pull is
+> running); **Update Analysis** (`POST /update-analysis`) also returns JSON; and
+> `module_4/requirements.txt` replaces this folder's `requirements.txt`.
+
 Adeolu Ogunnoiki (JHED: `aogunno1`, `aogunno1@jh.edu`)
 
 Course: Modern Software Concepts in Python (`EN.605.256.82.FA26`)

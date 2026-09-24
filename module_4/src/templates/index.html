@@ -21,7 +21,7 @@
                 <form method="post" action="{{ url_for('pull_data') }}" data-async-action>
                     <button class="button button-primary" type="submit" data-testid="pull-data-btn" aria-describedby="pull-data-note" title="Check Grad Cafe for new records" {% if pull_running %}disabled{% endif %}>Pull Data</button>
                 </form>
-                <p class="action-note" id="pull-data-note"><strong>Pull Data:</strong> Checks Grad Cafe for new public results, adds only new records, and stops if access is blocked or verification is required.</p>
+                <p class="action-note" id="pull-data-note"><strong>Pull Data:</strong> Checks Grad Cafe for new public results, adds new records and updates existing ones without creating duplicates, and stops if access is blocked or verification is required.</p>
             </div>
         </header>
 

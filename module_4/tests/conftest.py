@@ -11,6 +11,7 @@ import pytest
 
 
 def _test_database_url() -> str:
+    """Resolve the test database URL and refuse to run against a database not named ``*test*``."""
     url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not url:
         pytest.exit(
@@ -30,7 +31,7 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 @pytest.fixture
 def db_url() -> str:
-    """Empty ``applicants`` table in the test database; yields its URL."""
+    """Empty ``applicants`` table in the test database; returns its URL."""
     import load_data
 
     with psycopg.connect(TEST_DATABASE_URL) as connection:
@@ -41,6 +42,8 @@ def db_url() -> str:
 
 @pytest.fixture
 def row_count(db_url: str) -> Callable[[], int]:
+    """Return a function that counts the rows currently in ``applicants``."""
+
     def count() -> int:
         with psycopg.connect(db_url) as connection:
             return connection.execute("SELECT COUNT(*) FROM applicants").fetchone()[0]

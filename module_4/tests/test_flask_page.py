@@ -42,11 +42,12 @@ def test_get_analysis_renders_required_components(make_app, snapshot):
 
     assert response.status_code == 200
     soup = BeautifulSoup(response.data, "html.parser")
-    assert "Analysis" in soup.get_text()
+    assert "Analysis" in soup.title.get_text()
+    assert "Analysis" in soup.select_one('[data-testid="page-title"]').get_text()
     pull = soup.select_one('[data-testid="pull-data-btn"]')
     update = soup.select_one('[data-testid="update-analysis-btn"]')
-    assert pull is not None and pull.get_text(strip=True) == "Pull Data"
-    assert update is not None and update.get_text(strip=True) == "Update Analysis"
+    assert pull is not None and pull.name == "button" and pull.get_text(strip=True) == "Pull Data"
+    assert update is not None and update.name == "button" and update.get_text(strip=True) == "Update Analysis"
     assert pull.find_parent("form")["action"] == "/pull-data"
     assert update.find_parent("form")["action"] == "/update-analysis"
     assert "Answer:" in soup.get_text()
