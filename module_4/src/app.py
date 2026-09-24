@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, current_app, jsonify, render_template
 
 import models
 from load_data import load_into_database, load_records
@@ -110,6 +110,62 @@ def page_data(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def current_analysis() -> dict[str, Any]:
+    """Return the app's cached analysis snapshot, running the injected query on first use."""
+    extensions = current_app.extensions
+    if extensions["analysis"] is None:
+        extensions["analysis"] = extensions["services"]["query"]()
+    return extensions["analysis"]
+
+
+def analysis() -> str:
+    """``GET /`` and ``GET /analysis``: render the Analysis page.
+
+    Shows the latest snapshot stored by Update Analysis (or computed on first load),
+    the Pull Data / Update Analysis buttons, and the current pull status.
+    """
+    state: PullState = current_app.extensions["pull_state"]
+    return render_template(
+        "index.html",
+        data=page_data(current_analysis()),
+        pull_running=state.running,
+        pull_message=state.message,
+    )
+
+
+def pull_data() -> Any:
+    """``POST /pull-data``: scrape new records and pass them to the loader.
+
+    :returns: 200 ``{"ok": true, "count": N}`` on success; 409 ``{"ok": false, "busy": true}``
+        if a pull is already running; 500 ``{"ok": false, "busy": false, "error": ...}`` if
+        scraping or loading fails (the loader's single transaction leaves no partial writes).
+    """
+    state: PullState = current_app.extensions["pull_state"]
+    services = current_app.extensions["services"]
+    if not state.try_start():
+        return jsonify(ok=False, busy=True), 409
+    try:
+        count = services["loader"](services["scraper"]())
+    except Exception:
+        current_app.logger.exception("Pull Data failed")
+        state.finish("Pull Data failed. No records were changed; see the server log.")
+        return jsonify(ok=False, busy=False, error="Pull Data failed."), 500
+    state.finish(f"Pull Data finished. Processed {count:,} records.")
+    return jsonify(ok=True, count=count), 200
+
+
+def update_analysis() -> Any:
+    """``POST /update-analysis``: re-run the analysis query and store the new snapshot.
+
+    :returns: 200 ``{"ok": true}`` when not busy; 409 ``{"ok": false, "busy": true}`` while
+        a pull is running, in which case the stored snapshot is left unchanged.
+    """
+    if current_app.extensions["pull_state"].running:
+        return jsonify(ok=False, busy=True), 409
+    current_app.extensions["analysis"] = current_app.extensions["services"]["query"]()
+    return jsonify(ok=True), 200
+
+
 def create_app(
     config: dict[str, Any] | None = None,
     *,
@@ -117,12 +173,13 @@ def create_app(
     loader: Loader | None = None,
     query: Query | None = None,
 ) -> Flask:
-    """Build the Flask app.
+    """Build the Flask app and register its routes.
 
     :param config: Flask config overrides. ``DATABASE_URL`` repoints all database access.
-    :param scraper: Returns raw applicant records; defaults to the Module 3 scraper.
-    :param loader: Writes records to PostgreSQL and returns the count; defaults to ``load_into_database``.
-    :param query: Returns the analysis snapshot; defaults to ``analysis_snapshot``.
+    :param scraper: Returns raw applicant records; defaults to :func:`scrape_new_records`.
+    :param loader: Writes records to PostgreSQL and returns the count; defaults to
+        :func:`load_data.load_into_database`.
+    :param query: Returns the analysis snapshot; defaults to :func:`orm_queries.analysis_snapshot`.
     """
     app = Flask(__name__)
     app.config.update(DATABASE_URL=os.getenv("DATABASE_URL"))
@@ -130,52 +187,18 @@ def create_app(
     if config and config.get("DATABASE_URL"):
         models.use_database(config["DATABASE_URL"])
 
-    scrape = scraper or scrape_new_records
-    load = loader or load_into_database
-    analyze = query or analysis_snapshot
-    state = PullState()
-    app.extensions["pull_state"] = state
+    app.extensions["services"] = {
+        "scraper": scraper or scrape_new_records,
+        "loader": loader or load_into_database,
+        "query": query or analysis_snapshot,
+    }
+    app.extensions["pull_state"] = PullState()
     app.extensions["analysis"] = None
 
-    def current_analysis() -> dict[str, Any]:
-        """Return the cached snapshot, computing it on first use."""
-        if app.extensions["analysis"] is None:
-            app.extensions["analysis"] = analyze()
-        return app.extensions["analysis"]
-
-    @app.get("/")
-    @app.get("/analysis")
-    def analysis() -> str:
-        """Render the Analysis page from the latest refreshed snapshot."""
-        return render_template(
-            "index.html",
-            data=page_data(current_analysis()),
-            pull_running=state.running,
-            pull_message=state.message,
-        )
-
-    @app.post("/pull-data")
-    def pull_data() -> Any:
-        """Scrape and load new records; 409 if a pull is already running."""
-        if not state.try_start():
-            return jsonify(ok=False, busy=True), 409
-        try:
-            count = load(scrape())
-        except Exception:
-            app.logger.exception("Pull Data failed")
-            state.finish("Pull Data failed. No records were changed; see the server log.")
-            return jsonify(ok=False, busy=False, error="Pull Data failed."), 500
-        state.finish(f"Pull Data finished. Processed {count:,} records.")
-        return jsonify(ok=True, count=count), 200
-
-    @app.post("/update-analysis")
-    def update_analysis() -> Any:
-        """Refresh the analysis from PostgreSQL; 409 and no refresh while a pull is running."""
-        if state.running:
-            return jsonify(ok=False, busy=True), 409
-        app.extensions["analysis"] = analyze()
-        return jsonify(ok=True), 200
-
+    app.add_url_rule("/", view_func=analysis, methods=["GET"])
+    app.add_url_rule("/analysis", view_func=analysis, methods=["GET"])
+    app.add_url_rule("/pull-data", view_func=pull_data, methods=["POST"])
+    app.add_url_rule("/update-analysis", view_func=update_analysis, methods=["POST"])
     return app
 
 

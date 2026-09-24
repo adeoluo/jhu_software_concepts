@@ -5,7 +5,7 @@ ______________ coverage: platform darwin, python 3.13.15-final-0 _______________
 
 Name                                         Stmts   Miss  Cover   Missing
 --------------------------------------------------------------------------
-module_4/src/app.py                             93      0   100%
+module_4/src/app.py                             94      0   100%
 module_4/src/auto_next_pages.py                198      0   100%
 module_4/src/capture_chrome_html.py             64      0   100%
 module_4/src/clean.py                           44      0   100%
@@ -17,6 +17,6 @@ module_4/src/orm_queries.py                     78      0   100%
 module_4/src/query_data.py                      62      0   100%
 module_4/src/scrape.py                         156      0   100%
 --------------------------------------------------------------------------
-TOTAL                                          930      0   100%
+TOTAL                                          931      0   100%
 Required test coverage of 100% reached. Total coverage: 100.00%
-82 passed in 2.37s
+82 passed in 2.18s
