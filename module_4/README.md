@@ -23,6 +23,7 @@ module_4/
 ├── pytest.ini            markers + coverage gate
 ├── requirements.txt      app, test, coverage, and docs dependencies
 ├── coverage_summary.txt  terminal coverage report
+├── actions_success.png   screenshot of a green GitHub Actions run
 └── .readthedocs.yaml     Read the Docs build config
 ```
 
@@ -77,6 +78,12 @@ repository root, so running from inside `module_4/` reports 0% coverage. From `m
 
 The tests refuse to run unless the database name contains `test`, because they truncate the table.
 Latest result: **82 passed, 100.00% coverage** (see `coverage_summary.txt`).
+
+## Continuous integration
+
+`.github/workflows/tests.yml` runs on every push and pull request to `main`. It starts a
+PostgreSQL 16 service container, installs `module_4/requirements.txt`, and runs the full marked
+suite with the 100% coverage gate. `actions_success.png` shows a successful run.
 
 ## Build and view the documentation
 

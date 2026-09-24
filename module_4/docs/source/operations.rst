@@ -35,8 +35,12 @@ Troubleshooting
 ``connection refused`` / ``database "gradcafe_test" does not exist``
    Start PostgreSQL (``pg_isready``) and run ``createdb gradcafe_test``.
 
-Coverage fails with paths like ``src/app.py`` not found
-   Run pytest from the repository root, not from ``module_4/``.
+Coverage reports 0% and warns ``Module module_4/src was never imported``
+   ``--cov=module_4/src`` is relative to the repository root. Run pytest from the repository
+   root, or from ``module_4/`` add ``--cov=src``.
+
+Coverage fails the 100% gate when running a single marker group
+   ``pytest.ini`` applies the gate to every run. Add ``--no-cov`` for partial runs.
 
 CI: service container fails to start (Docker exit code 125)
    Docker health-check flags must be ``--health-cmd``, ``--health-interval``,

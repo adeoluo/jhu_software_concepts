@@ -37,8 +37,9 @@ Marker           Covers
 ``integration``  Pull → update → render flows, ETL scripts driven by fakes
 ===============  ============================================================
 
-Run one group with, for example, ``pytest module_4/tests -m db``. Coverage is enforced
-only on full runs.
+Run one group with, for example, ``pytest module_4/tests -m db --no-cov``. ``pytest.ini``
+applies the 100% coverage gate to every run, so a partial run needs ``--no-cov`` (or it
+fails the gate because the other groups' code was not exercised).
 
 Test files
 ----------

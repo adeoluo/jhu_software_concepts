@@ -130,8 +130,9 @@ inside <code class="docutils literal notranslate"><span class="pre">module_4/</s
 </tr>
 </tbody>
 </table>
-<p>Run one group with, for example, <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">module_4/tests</span> <span class="pre">-m</span> <span class="pre">db</span></code>. Coverage is enforced
-only on full runs.</p>
+<p>Run one group with, for example, <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">module_4/tests</span> <span class="pre">-m</span> <span class="pre">db</span> <span class="pre">--no-cov</span></code>. <code class="docutils literal notranslate"><span class="pre">pytest.ini</span></code>
+applies the 100% coverage gate to every run, so a partial run needs <code class="docutils literal notranslate"><span class="pre">--no-cov</span></code> (or it
+fails the gate because the other groups’ code was not exercised).</p>
 </section>
 <section id="test-files">
 <h2>Test files<a class="headerlink" href="#test-files" title="Link to this heading"></a></h2>
