@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Grad Cafe Applicant Analysis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <main class="shell">
+        <header class="masthead">
+            <div>
+                <p class="eyebrow">EN.605.256.82.FA26 / Module 3</p>
+                <h1>Grad Cafe Applicant Analysis</h1>
+                <p class="lede">A live PostgreSQL view of 100,002 self-reported graduate application entries.</p>
+            </div>
+            <div class="actions">
+                <form method="post" action="{{ url_for('update_analysis') }}">
+                    <button class="button button-secondary" type="submit">Update Analysis</button>
+                </form>
+                <form method="post" action="{{ url_for('pull_data') }}">
+                    <button class="button button-primary" type="submit" aria-describedby="pull-data-note" title="Check Grad Cafe for new records" {% if pull_running %}disabled{% endif %}>Pull Data</button>
+                </form>
+                <p class="action-note" id="pull-data-note"><strong>Pull Data:</strong> Checks Grad Cafe for new public results, adds only new records, and stops if access is blocked or verification is required.</p>
+            </div>
+        </header>
+
+        <section class="status-bar {% if pull_running %}status-live{% endif %}">
+            <span class="status-dot"></span>
+            <span>{{ pull_message }}</span>
+            {% if pull_running %}<strong>Pull in progress</strong>{% endif %}
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack" aria-live="polite">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <section class="metric-grid" aria-label="Key results">
+            <article class="metric-card accent-blue"><span>Fall 2026 entries</span><strong>{{ data.display.q1 }}</strong><small>Question 1</small></article>
+            <article class="metric-card accent-coral"><span>International share</span><strong>{{ data.display.q2 }}</strong><small>Question 2</small></article>
+            <article class="metric-card accent-gold"><span>Fall 2025 acceptances</span><strong>{{ data.display.q5 }}</strong><small>Question 5</small></article>
+            <article class="metric-card accent-green"><span>Accepted Fall 2026 GPA</span><strong>{{ data.display.q6 }}</strong><small>Question 6</small></article>
+        </section>
+
+        <section class="content-grid">
+            <article class="panel">
+                <div class="panel-heading"><span class="kicker">Questions 3, 4, 6</span><h2>Academic profile</h2></div>
+                <dl class="result-list">
+                    <div><dt>Average GPA</dt><dd>{{ data.display.q3_gpa }}</dd></div>
+                    <div><dt>Average GRE Quantitative</dt><dd>{{ data.display.q3_gre }}</dd></div>
+                    <div><dt>Average GRE Verbal</dt><dd>{{ data.display.q3_gre_v }}</dd></div>
+                    <div><dt>Average GRE Analytical Writing</dt><dd>{{ data.display.q3_gre_aw }}</dd></div>
+                    <div><dt>Fall 2026 American average GPA</dt><dd>{{ data.display.q4 }}</dd></div>
+                    <div><dt>Fall 2026 accepted average GPA</dt><dd>{{ data.display.q6 }}</dd></div>
+                </dl>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading"><span class="kicker">Question 10</span><h2>Which five universities have the most Fall 2026 applicant entries?</h2></div>
+                <ol class="rank-list">
+                    {% for university, count in data.q10 %}
+                        <li><span>{{ university }}</span><strong>{{ "{:,}".format(count) }}</strong></li>
+                    {% endfor %}
+                </ol>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="panel">
+                <div class="panel-heading"><span class="kicker">Questions 7, 8, 9</span><h2>Program comparisons</h2></div>
+                <dl class="result-list">
+                    <div><dt>JHU master's Computer Science</dt><dd>{{ data.display.q7 }}</dd></div>
+                    <div><dt>Original-field qualifying count</dt><dd>{{ data.display.q8 }}</dd></div>
+                    <div><dt>LLM-field qualifying count</dt><dd>{{ data.display.q9 }}</dd></div>
+                    <div><dt>LLM minus original</dt><dd>{{ data.display.difference }}</dd></div>
+                </dl>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading"><span class="kicker">Question 11</span><h2>What is the average GPA for American and international applicants who provide a GPA?</h2></div>
+                <dl class="result-list">
+                    {% for classification, average in data.display.q11 %}
+                        <div><dt>{{ classification }}</dt><dd>{{ average }}</dd></div>
+                    {% endfor %}
+                </dl>
+            </article>
+        </section>
+
+        <footer>
+            <p>This analysis describes self-reported entries and is not representative of all applicants.</p>
+        </footer>
+    </main>
+</body>
+</html>
