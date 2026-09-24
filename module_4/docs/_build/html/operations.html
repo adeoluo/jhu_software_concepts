@@ -1,0 +1,161 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operational Notes &mdash; Grad Cafe Analytics 4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=9f5556dd"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Testing Guide" href="testing.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Grad Cafe Analytics
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview &amp; Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Operational Notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#busy-state-policy">Busy-state policy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#idempotency-strategy-and-uniqueness-key">Idempotency strategy and uniqueness key</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Grad Cafe Analytics</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Operational Notes</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/operations.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="operational-notes">
+<h1>Operational Notes<a class="headerlink" href="#operational-notes" title="Link to this heading"></a></h1>
+<section id="busy-state-policy">
+<h2>Busy-state policy<a class="headerlink" href="#busy-state-policy" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Only one Pull Data runs at a time. <code class="docutils literal notranslate"><span class="pre">PullState.try_start()</span></code> sets the busy flag
+under a lock, so a second concurrent request gets <code class="docutils literal notranslate"><span class="pre">409</span> <span class="pre">{&quot;busy&quot;:</span> <span class="pre">true}</span></code>.</p></li>
+<li><p>While a pull is running, Update Analysis returns <code class="docutils literal notranslate"><span class="pre">409</span> <span class="pre">{&quot;busy&quot;:</span> <span class="pre">true}</span></code> and keeps the
+current snapshot. The page never shows a half-loaded dataset.</p></li>
+<li><p>The busy flag is cleared on success and on failure. A failed pull never leaves the
+buttons locked.</p></li>
+<li><p>The page disables both buttons and shows <strong>Pull in progress</strong> while the flag is set.</p></li>
+</ul>
+</section>
+<section id="idempotency-strategy-and-uniqueness-key">
+<h2>Idempotency strategy and uniqueness key<a class="headerlink" href="#idempotency-strategy-and-uniqueness-key" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The uniqueness key is <code class="docutils literal notranslate"><span class="pre">p_id</span></code>, the primary key. <code class="docutils literal notranslate"><span class="pre">load_data.stable_id</span></code> takes it from
+the Grad Cafe result URL (<code class="docutils literal notranslate"><span class="pre">/result/&lt;id&gt;</span></code>). If there is no URL, it uses a
+deterministic SHA-256 hash of university, program, status, date, and raw text.</p></li>
+<li><p>Rows are written with <code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">...</span> <span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">(p_id)</span> <span class="pre">DO</span> <span class="pre">UPDATE</span></code>, so pulling the same
+data twice leaves the row count unchanged. An overlapping row is updated in place, and
+<code class="docutils literal notranslate"><span class="pre">COALESCE</span></code> keeps existing values when the new record has a blank field.</p></li>
+<li><p>The whole batch runs in one transaction. If any row fails, nothing from that pull is kept.</p></li>
+</ul>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">Set</span> <span class="pre">DATABASE_URL</span> <span class="pre">to</span> <span class="pre">a</span> <span class="pre">PostgreSQL</span> <span class="pre">test</span> <span class="pre">database</span></code> when running pytest</dt><dd><p>Export <code class="docutils literal notranslate"><span class="pre">DATABASE_URL=postgresql://localhost:5432/gradcafe_test</span></code> first.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Refusing</span> <span class="pre">to</span> <span class="pre">run:</span> <span class="pre">...</span> <span class="pre">must</span> <span class="pre">contain</span> <span class="pre">'test'</span></code></dt><dd><p>This guard stops the suite from truncating your real data. Use a separate test database.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">connection</span> <span class="pre">refused</span></code> / <code class="docutils literal notranslate"><span class="pre">database</span> <span class="pre">&quot;gradcafe_test&quot;</span> <span class="pre">does</span> <span class="pre">not</span> <span class="pre">exist</span></code></dt><dd><p>Start PostgreSQL (<code class="docutils literal notranslate"><span class="pre">pg_isready</span></code>) and run <code class="docutils literal notranslate"><span class="pre">createdb</span> <span class="pre">gradcafe_test</span></code>.</p>
+</dd>
+<dt>Coverage fails with paths like <code class="docutils literal notranslate"><span class="pre">src/app.py</span></code> not found</dt><dd><p>Run pytest from the repository root, not from <code class="docutils literal notranslate"><span class="pre">module_4/</span></code>.</p>
+</dd>
+<dt>CI: service container fails to start (Docker exit code 125)</dt><dd><p>Docker health-check flags must be <code class="docutils literal notranslate"><span class="pre">--health-cmd</span></code>, <code class="docutils literal notranslate"><span class="pre">--health-interval</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--health-timeout</span></code>, and <code class="docutils literal notranslate"><span class="pre">--health-retries</span></code>. An unknown flag stops the container from being created.</p>
+</dd>
+<dt>CI: invalid workflow file</dt><dd><p>Quote YAML values that contain <code class="docutils literal notranslate"><span class="pre">:</span></code> or <code class="docutils literal notranslate"><span class="pre">*</span></code> and keep indentation consistent.</p>
+</dd>
+<dt>Pull Data stops with a challenge/blocked message</dt><dd><p>Grad Cafe served a verification or rate-limit page. The scraper stops instead of
+bypassing it. Complete the verification in Chrome and try again later.</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="testing.html" class="btn btn-neutral float-left" title="Testing Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

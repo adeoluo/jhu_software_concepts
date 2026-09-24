@@ -1,0 +1,257 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>generate_query_results_pdf &mdash; Grad Cafe Analytics 4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9f5556dd"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Grad Cafe Analytics
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview &amp; Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../testing.html">Testing Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../operations.html">Operational Notes</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Grad Cafe Analytics</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">generate_query_results_pdf</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for generate_query_results_pdf</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Generate ``query_results.pdf``: each SQL question with its answer, query, and explanation."""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">decimal</span><span class="w"> </span><span class="kn">import</span> <span class="n">Decimal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">xml.sax.saxutils</span><span class="w"> </span><span class="kn">import</span> <span class="n">escape</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.lib.enums</span><span class="w"> </span><span class="kn">import</span> <span class="n">TA_LEFT</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.lib.pagesizes</span><span class="w"> </span><span class="kn">import</span> <span class="n">letter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.lib.styles</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParagraphStyle</span><span class="p">,</span> <span class="n">getSampleStyleSheet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.lib.units</span><span class="w"> </span><span class="kn">import</span> <span class="n">inch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.platypus</span><span class="w"> </span><span class="kn">import</span> <span class="n">PageBreak</span><span class="p">,</span> <span class="n">Paragraph</span><span class="p">,</span> <span class="n">SimpleDocTemplate</span><span class="p">,</span> <span class="n">Spacer</span><span class="p">,</span> <span class="n">Table</span><span class="p">,</span> <span class="n">TableStyle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">reportlab.lib</span><span class="w"> </span><span class="kn">import</span> <span class="n">colors</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">query_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">QUESTION_TEXT</span><span class="p">,</span> <span class="n">SQL_QUERIES</span><span class="p">,</span> <span class="n">run_queries</span>
+
+
+<span class="n">EXPLANATIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"Question 1"</span><span class="p">:</span> <span class="s2">"Counts all rows whose term contains Fall 2026, regardless of other missing fields."</span><span class="p">,</span>
+    <span class="s2">"Question 2"</span><span class="p">:</span> <span class="s2">"Uses classified rows as the denominator and counts only International rows in the numerator."</span><span class="p">,</span>
+    <span class="s2">"Question 3"</span><span class="p">:</span> <span class="s2">"Calculates each metric independently, so missing GPA or GRE values do not exclude a row from another average."</span><span class="p">,</span>
+    <span class="s2">"Question 4"</span><span class="p">:</span> <span class="s2">"Filters to Fall 2026 American applicants and averages only non-NULL GPA values."</span><span class="p">,</span>
+    <span class="s2">"Question 5"</span><span class="p">:</span> <span class="s2">"Divides accepted Fall 2025 rows by all Fall 2025 rows, including rows without other optional fields."</span><span class="p">,</span>
+    <span class="s2">"Question 6"</span><span class="p">:</span> <span class="s2">"Filters to Fall 2026 accepted applicants and averages their available GPA values."</span><span class="p">,</span>
+    <span class="s2">"Question 7"</span><span class="p">:</span> <span class="s2">"Matches the original university, program, and degree fields using case-insensitive text patterns."</span><span class="p">,</span>
+    <span class="s2">"Question 8"</span><span class="p">:</span> <span class="s2">"Uses the original university and program fields while also requiring Fall 2026, acceptance, PhD, and Computer Science."</span><span class="p">,</span>
+    <span class="s2">"Question 9"</span><span class="p">:</span> <span class="s2">"Uses the LLM-generated university and program fields while retaining the original term, status, and degree filters."</span><span class="p">,</span>
+    <span class="s2">"Question 10"</span><span class="p">:</span> <span class="s2">"Groups Fall 2026 rows by university, counts each group, sorts from largest to smallest, and returns five rows."</span><span class="p">,</span>
+    <span class="s2">"Question 11"</span><span class="p">:</span> <span class="s2">"Groups American and International rows separately and averages only rows that provide a GPA."</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="format_value">
+<a class="viewcode-back" href="../api.html#generate_query_results_pdf.format_value">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">format_value</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Format floats/Decimals with two decimals; ``None`` becomes ``N/A``."""</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"N/A"</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">Decimal</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="result_lines">
+<a class="viewcode-back" href="../api.html#generate_query_results_pdf.result_lines">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">result_lines</span><span class="p">(</span><span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return the display lines for one question's rows."""</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="n">question</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 1"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Fall 2026 applicant count: </span><span class="si">{</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 2"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Percent international: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">%"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 3"</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"Average GPA"</span><span class="p">,</span> <span class="s2">"Average GRE Quantitative"</span><span class="p">,</span> <span class="s2">"Average GRE Verbal"</span><span class="p">,</span> <span class="s2">"Average GRE Analytical Writing"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 4"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Fall 2026 American average GPA: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 5"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Fall 2025 acceptance percentage: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">%"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 6"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Fall 2026 accepted average GPA: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 7"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"Johns Hopkins master's Computer Science count: </span><span class="si">{</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"Question 8"</span><span class="p">,</span> <span class="s2">"Question 9"</span><span class="p">}:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">question</span><span class="si">}</span><span class="s2"> count: </span><span class="si">{</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">question</span> <span class="o">==</span> <span class="s2">"Question 10"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">university</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">count</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">university</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">classification</span><span class="o">.</span><span class="n">title</span><span class="p">()</span><span class="si">}</span><span class="s2"> average GPA: </span><span class="si">{</span><span class="n">format_value</span><span class="p">(</span><span class="n">average_gpa</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">classification</span><span class="p">,</span> <span class="n">average_gpa</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="build_pdf">
+<a class="viewcode-back" href="../api.html#generate_query_results_pdf.build_pdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_pdf</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Run the SQL queries and write the formatted report to ``output_path``."""</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">run_queries</span><span class="p">()</span>
+    <span class="n">styles</span> <span class="o">=</span> <span class="n">getSampleStyleSheet</span><span class="p">()</span>
+    <span class="n">title_style</span> <span class="o">=</span> <span class="n">styles</span><span class="p">[</span><span class="s2">"Title"</span><span class="p">]</span>
+    <span class="n">heading_style</span> <span class="o">=</span> <span class="n">styles</span><span class="p">[</span><span class="s2">"Heading2"</span><span class="p">]</span>
+    <span class="n">body_style</span> <span class="o">=</span> <span class="n">styles</span><span class="p">[</span><span class="s2">"BodyText"</span><span class="p">]</span>
+    <span class="n">body_style</span><span class="o">.</span><span class="n">leading</span> <span class="o">=</span> <span class="mi">14</span>
+    <span class="n">code_style</span> <span class="o">=</span> <span class="n">ParagraphStyle</span><span class="p">(</span>
+        <span class="s2">"SQLCode"</span><span class="p">,</span>
+        <span class="n">parent</span><span class="o">=</span><span class="n">body_style</span><span class="p">,</span>
+        <span class="n">fontName</span><span class="o">=</span><span class="s2">"Courier"</span><span class="p">,</span>
+        <span class="n">fontSize</span><span class="o">=</span><span class="mf">7.5</span><span class="p">,</span>
+        <span class="n">leading</span><span class="o">=</span><span class="mf">9.5</span><span class="p">,</span>
+        <span class="n">alignment</span><span class="o">=</span><span class="n">TA_LEFT</span><span class="p">,</span>
+        <span class="n">backColor</span><span class="o">=</span><span class="n">colors</span><span class="o">.</span><span class="n">whitesmoke</span><span class="p">,</span>
+        <span class="n">borderColor</span><span class="o">=</span><span class="n">colors</span><span class="o">.</span><span class="n">lightgrey</span><span class="p">,</span>
+        <span class="n">borderWidth</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+        <span class="n">borderPadding</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">document</span> <span class="o">=</span> <span class="n">SimpleDocTemplate</span><span class="p">(</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">output_path</span><span class="p">),</span>
+        <span class="n">pagesize</span><span class="o">=</span><span class="n">letter</span><span class="p">,</span>
+        <span class="n">rightMargin</span><span class="o">=</span><span class="mf">0.65</span> <span class="o">*</span> <span class="n">inch</span><span class="p">,</span>
+        <span class="n">leftMargin</span><span class="o">=</span><span class="mf">0.65</span> <span class="o">*</span> <span class="n">inch</span><span class="p">,</span>
+        <span class="n">topMargin</span><span class="o">=</span><span class="mf">0.6</span> <span class="o">*</span> <span class="n">inch</span><span class="p">,</span>
+        <span class="n">bottomMargin</span><span class="o">=</span><span class="mf">0.6</span> <span class="o">*</span> <span class="n">inch</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">story</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">Paragraph</span><span class="p">(</span><span class="s2">"Module 3 SQL Analysis Results"</span><span class="p">,</span> <span class="n">title_style</span><span class="p">),</span>
+        <span class="n">Paragraph</span><span class="p">(</span><span class="s2">"Questions 1–9 and the two original database questions."</span><span class="p">,</span> <span class="n">body_style</span><span class="p">),</span>
+        <span class="n">Spacer</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">inch</span><span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">question</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">SQL_QUERIES</span><span class="p">):</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Paragraph</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">question</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">QUESTION_TEXT</span><span class="p">[</span><span class="n">question</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">heading_style</span><span class="p">))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Paragraph</span><span class="p">(</span><span class="s2">"&lt;b&gt;Result&lt;/b&gt;"</span><span class="p">,</span> <span class="n">body_style</span><span class="p">))</span>
+        <span class="n">result_table</span> <span class="o">=</span> <span class="n">Table</span><span class="p">([[</span><span class="n">line</span><span class="p">]</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">result_lines</span><span class="p">(</span><span class="n">question</span><span class="p">,</span> <span class="n">results</span><span class="p">)],</span> <span class="n">colWidths</span><span class="o">=</span><span class="p">[</span><span class="mf">7.1</span> <span class="o">*</span> <span class="n">inch</span><span class="p">])</span>
+        <span class="n">result_table</span><span class="o">.</span><span class="n">setStyle</span><span class="p">(</span><span class="n">TableStyle</span><span class="p">([</span>
+            <span class="p">(</span><span class="s2">"BACKGROUND"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">colors</span><span class="o">.</span><span class="n">HexColor</span><span class="p">(</span><span class="s2">"#eef5f7"</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">"BOX"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">colors</span><span class="o">.</span><span class="n">HexColor</span><span class="p">(</span><span class="s2">"#9bb7bd"</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">"INNERGRID"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mf">0.25</span><span class="p">,</span> <span class="n">colors</span><span class="o">.</span><span class="n">HexColor</span><span class="p">(</span><span class="s2">"#c7d8db"</span><span class="p">)),</span>
+            <span class="p">(</span><span class="s2">"LEFTPADDING"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">7</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">"RIGHTPADDING"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">7</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">"TOPPADDING"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">5</span><span class="p">),</span>
+            <span class="p">(</span><span class="s2">"BOTTOMPADDING"</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">5</span><span class="p">),</span>
+        <span class="p">]))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result_table</span><span class="p">)</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Spacer</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">inch</span><span class="p">))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Paragraph</span><span class="p">(</span><span class="s2">"&lt;b&gt;SQL query&lt;/b&gt;"</span><span class="p">,</span> <span class="n">body_style</span><span class="p">))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Paragraph</span><span class="p">(</span><span class="n">escape</span><span class="p">(</span><span class="n">SQL_QUERIES</span><span class="p">[</span><span class="n">question</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()),</span> <span class="n">code_style</span><span class="p">))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Spacer</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">inch</span><span class="p">))</span>
+        <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Paragraph</span><span class="p">(</span><span class="sa">f</span><span class="s2">"&lt;b&gt;Explanation:&lt;/b&gt; </span><span class="si">{</span><span class="n">EXPLANATIONS</span><span class="p">[</span><span class="n">question</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">body_style</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">index</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">SQL_QUERIES</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">story</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">PageBreak</span><span class="p">())</span>
+
+    <span class="n">document</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">story</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../api.html#generate_query_results_pdf.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Command-line entry point: ``python generate_query_results_pdf.py --output &lt;file.pdf&gt;``."""</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Generate the Module 3 SQL analysis PDF."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">Path</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"query_results.pdf"</span><span class="p">))</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+    <span class="n">build_pdf</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Saved </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,483 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>auto_next_pages &mdash; Grad Cafe Analytics 4.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=9f5556dd"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Grad Cafe Analytics
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview &amp; Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../testing.html">Testing Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../operations.html">Operational Notes</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Grad Cafe Analytics</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">auto_next_pages</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for auto_next_pages</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Capture Grad Cafe survey pages from a user-verified Chrome tab via the DevTools protocol.</span>
+
+<span class="sd">The loop saves each page's HTML and parsed JSON, resumes from the last saved page, and</span>
+<span class="sd">stops (rather than retrying or bypassing) on any challenge, block, or rate-limit page.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">websocket</span>  <span class="c1"># type: ignore</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">bs4</span><span class="w"> </span><span class="kn">import</span> <span class="n">BeautifulSoup</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">scrape</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_data</span><span class="p">,</span> <span class="n">save_data</span><span class="p">,</span> <span class="n">scrape_data_from_html_file</span><span class="p">,</span> <span class="n">verify_collection_allowed</span>
+
+<span class="n">CHROME_DEBUG_URL</span> <span class="o">=</span> <span class="s2">"http://localhost:9222"</span>
+<span class="n">DEFAULT_HOST</span> <span class="o">=</span> <span class="s2">"thegradcafe.com"</span>
+<span class="n">DEFAULT_TARGET_ROWS</span> <span class="o">=</span> <span class="mi">100000</span>
+<span class="n">PAGE_DELAY_SECONDS</span> <span class="o">=</span> <span class="mf">2.0</span>
+
+<span class="n">BLOCK_MARKERS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"just a moment"</span><span class="p">,</span>
+    <span class="s2">"checking your browser"</span><span class="p">,</span>
+    <span class="s2">"verify you are human"</span><span class="p">,</span>
+    <span class="s2">"attention required"</span><span class="p">,</span>
+    <span class="s2">"access denied"</span><span class="p">,</span>
+    <span class="s2">"rate limit"</span><span class="p">,</span>
+    <span class="s2">"too many requests"</span><span class="p">,</span>
+    <span class="s2">"cf-error-details"</span><span class="p">,</span>
+    <span class="s2">"cf-mitigated"</span><span class="p">,</span>
+    <span class="s2">"gateway time-out"</span><span class="p">,</span>
+    <span class="s2">"gateway timeout"</span><span class="p">,</span>
+    <span class="s2">"error code 504"</span><span class="p">,</span>
+    <span class="s2">"error code 502"</span><span class="p">,</span>
+    <span class="s2">"error code 503"</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="BlockedError">
+<a class="viewcode-back" href="../api.html#auto_next_pages.BlockedError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BlockedError</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Raised when the site appears to be blocking, throttling, or challenging requests."""</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_looks_blocked</span><span class="p">(</span><span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Detect Cloudflare/challenge/rate-limit pages so collection stops instead of retrying."""</span>
+    <span class="n">lowered</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">marker</span> <span class="ow">in</span> <span class="n">lowered</span> <span class="k">for</span> <span class="n">marker</span> <span class="ow">in</span> <span class="n">BLOCK_MARKERS</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_request_json</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Send an HTTP request to Chrome DevTools JSON endpoints."""</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+
+    <span class="n">req</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">"User-Agent"</span><span class="p">:</span> <span class="s2">"Mozilla/5.0"</span><span class="p">})</span>
+    <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"replace"</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_list_targets</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Query Chrome DevTools for open tab target descriptors."""</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_request_json</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">CHROME_DEBUG_URL</span><span class="si">}</span><span class="s2">/json/list"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">"Chrome remote debugging is not available. Start Chrome with: "</span>
+            <span class="s1">'open -a "Google Chrome" --args --remote-debugging-port=9222'</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pick_target</span><span class="p">(</span><span class="n">preferred_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Find and return the Chrome DevTools target for GradCafe."""</span>
+    <span class="n">targets</span> <span class="o">=</span> <span class="n">_list_targets</span><span class="p">()</span>
+    <span class="n">matches</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">targets</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"page"</span> <span class="ow">and</span> <span class="n">DEFAULT_HOST</span> <span class="ow">in</span> <span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">new_target</span> <span class="o">=</span> <span class="n">_request_json</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">CHROME_DEBUG_URL</span><span class="si">}</span><span class="s2">/json/new?</span><span class="si">{</span><span class="n">preferred_url</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">1.5</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_target</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">targets</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">targets</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+        <span class="s2">"No GradCafe page is currently open in Chrome DevTools. "</span>
+        <span class="s2">"Open the GradCafe results page in Chrome and run the script again."</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">expression</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Execute JavaScript in the remote Chrome browser tab via WebSocket."""</span>
+    <span class="n">ws</span> <span class="o">=</span> <span class="n">websocket</span><span class="o">.</span><span class="n">create_connection</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="n">suppress_origin</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">ws</span><span class="o">.</span><span class="n">send</span><span class="p">(</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                    <span class="s2">"method"</span><span class="p">:</span> <span class="s2">"Runtime.evaluate"</span><span class="p">,</span>
+                    <span class="s2">"params"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"expression"</span><span class="p">:</span> <span class="n">expression</span><span class="p">,</span> <span class="s2">"returnByValue"</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">recv</span><span class="p">()</span>
+            <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"id"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"result"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"result"</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"value"</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">value</span>
+                <span class="k">return</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"result"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"value"</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">ws</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_click_next_button</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Locate and click the Next pagination link in Chrome."""</span>
+    <span class="n">expression</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">"""</span>
+<span class="s2">    (() =&gt; {</span>
+<span class="s2">        const candidates = [...document.querySelectorAll('a, button')].filter((el) =&gt; {</span>
+<span class="s2">            if (!el || el.offsetParent === null || el.disabled) return false;</span>
+<span class="s2">            const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();</span>
+<span class="s2">            const label = (el.getAttribute('aria-label') || '').trim().toLowerCase();</span>
+<span class="s2">            const rel = (el.getAttribute('rel') || '').trim().toLowerCase();</span>
+<span class="s2">            const href = (el.getAttribute('href') || '').toLowerCase();</span>
+<span class="s2">            return rel === 'next' || text === 'next' || label === 'next' || href.includes('/survey?cursor=');</span>
+<span class="s2">        });</span>
+
+<span class="s2">        const target = candidates.find((el) =&gt; (el.getAttribute('rel') || '').toLowerCase() === 'next')</span>
+<span class="s2">            || candidates.find((el) =&gt; (el.innerText || el.textContent || '').trim().toLowerCase() === 'next')</span>
+<span class="s2">            || candidates.find((el) =&gt; (el.getAttribute('aria-label') || '').trim().toLowerCase() === 'next')</span>
+<span class="s2">            || candidates.find((el) =&gt; (el.getAttribute('href') || '').toLowerCase().includes('/survey?cursor='));</span>
+
+<span class="s2">        if (!target) {</span>
+<span class="s2">            return { clicked: false, url: document.location.href };</span>
+<span class="s2">        }</span>
+
+<span class="s2">        target.scrollIntoView({ block: 'center', behavior: 'instant' });</span>
+<span class="s2">        target.click();</span>
+
+<span class="s2">        const currentUrl = document.location.href;</span>
+<span class="s2">        return { clicked: true, url: currentUrl };</span>
+<span class="s2">    })();</span>
+<span class="s2">    """</span>
+    <span class="k">return</span> <span class="n">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="n">expression</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_current_html</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fetch outerHTML of current document from the remote browser tab."""</span>
+    <span class="k">return</span> <span class="n">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="s2">"document.documentElement.outerHTML"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_next_page_url_from_html</span><span class="p">(</span><span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Parse HTML and extract the next pagination cursor URL."""</span>
+    <span class="n">soup</span> <span class="o">=</span> <span class="n">BeautifulSoup</span><span class="p">(</span><span class="n">html</span><span class="p">,</span> <span class="s2">"html.parser"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">link</span> <span class="ow">in</span> <span class="n">soup</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"a[href]"</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="s2">" "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">link</span><span class="o">.</span><span class="n">get_text</span><span class="p">(</span><span class="s2">" "</span><span class="p">,</span> <span class="n">strip</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">())</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="p">(</span><span class="n">link</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"aria-label"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">rel</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">link</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"rel"</span><span class="p">,</span> <span class="p">[])]</span>
+        <span class="k">if</span> <span class="n">text</span> <span class="o">==</span> <span class="s2">"next"</span> <span class="ow">or</span> <span class="n">label</span> <span class="o">==</span> <span class="s2">"next"</span> <span class="ow">or</span> <span class="s2">"next"</span> <span class="ow">in</span> <span class="n">rel</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">link</span><span class="p">[</span><span class="s2">"href"</span><span class="p">])</span>
+    <span class="k">return</span> <span class="s2">""</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_navigate_to_url</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">destination_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Direct Chrome browser tab to destination URL and wait until ready."""</span>
+    <span class="n">previous_url</span> <span class="o">=</span> <span class="n">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="s2">"document.location.href"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">previous_url</span> <span class="o">==</span> <span class="n">destination_url</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"window.location.assign(</span><span class="si">{</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">destination_url</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+    <span class="n">deadline</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">+</span> <span class="mi">20</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">_evaluate_js</span><span class="p">(</span>
+            <span class="n">websocket_url</span><span class="p">,</span>
+            <span class="s2">"({url: document.location.href, ready: document.readyState})"</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">)</span> <span class="o">!=</span> <span class="n">previous_url</span> <span class="ow">and</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ready"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"complete"</span><span class="p">:</span>
+            <span class="k">return</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Chrome did not finish navigating to </span><span class="si">{</span><span class="n">destination_url</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_advance_to_next_page</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Click Next button and wait for pagination navigation completion."""</span>
+    <span class="n">previous_url</span> <span class="o">=</span> <span class="n">_evaluate_js</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">,</span> <span class="s2">"document.location.href"</span><span class="p">)</span>
+    <span class="n">click_result</span> <span class="o">=</span> <span class="n">_click_next_button</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">click_result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"clicked"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"Could not find an enabled Next link in the results pagination."</span><span class="p">)</span>
+
+    <span class="n">deadline</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">+</span> <span class="mi">20</span>
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">deadline</span><span class="p">:</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="n">_evaluate_js</span><span class="p">(</span>
+            <span class="n">websocket_url</span><span class="p">,</span>
+            <span class="s2">"({url: document.location.href, ready: document.readyState})"</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"url"</span><span class="p">)</span> <span class="o">!=</span> <span class="n">previous_url</span> <span class="ow">and</span> <span class="n">state</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ready"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"complete"</span><span class="p">:</span>
+            <span class="k">return</span>
+    <span class="c1"># Distinguish a transient upstream error (e.g. Cloudflare 504) from a real navigation failure.</span>
+    <span class="n">current_html</span> <span class="o">=</span> <span class="n">_read_current_html</span><span class="p">(</span><span class="n">websocket_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_looks_blocked</span><span class="p">(</span><span class="n">current_html</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">BlockedError</span><span class="p">(</span>
+            <span class="s2">"GradCafe returned a challenge/block/error page while navigating to the next page. "</span>
+            <span class="s2">"Collection stopped instead of retrying or bypassing the restriction."</span>
+        <span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"Chrome did not finish navigating to the next results page."</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_save_page_html</span><span class="p">(</span><span class="n">page_number</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">html</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Save captured HTML page string to disk."""</span>
+    <span class="n">output_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">.html"</span>
+    <span class="n">path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">html</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_record_key</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return composite tuple key for applicant record deduplication."""</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">,</span> <span class="s2">""</span><span class="p">))</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"university"</span><span class="p">,</span> <span class="s2">"raw_program"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">,</span> <span class="s2">"date_added"</span><span class="p">,</span> <span class="s2">"decision_date"</span><span class="p">,</span> <span class="s2">"raw_text"</span><span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_existing_page_files</span><span class="p">(</span><span class="n">json_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">json_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Locate and return existing page-level JSON checkpoint files."""</span>
+    <span class="n">pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">rf</span><span class="s2">"^</span><span class="si">{</span><span class="n">re</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">json_prefix</span><span class="p">)</span><span class="si">}</span><span class="s2">(\d+)\.json$"</span><span class="p">)</span>
+    <span class="n">pages</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">json_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">json_prefix</span><span class="si">}</span><span class="s2">*.json"</span><span class="p">):</span>
+        <span class="n">match</span> <span class="o">=</span> <span class="n">pattern</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">match</span><span class="p">:</span>
+            <span class="n">pages</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="n">path</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="run_capture_loop">
+<a class="viewcode-back" href="../api.html#auto_next_pages.run_capture_loop">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_capture_loop</span><span class="p">(</span>
+    <span class="n">start_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">pages</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">target_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_TARGET_ROWS</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">"data"</span><span class="p">,</span>
+    <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"gradcafe_page_"</span><span class="p">,</span>
+    <span class="n">json_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"applicant_data_page"</span><span class="p">,</span>
+    <span class="n">merged_output</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">"applicant_data.json"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Execute main pagination and capture loop across GradCafe survey pages."""</span>
+    <span class="n">verify_collection_allowed</span><span class="p">(</span><span class="n">start_url</span><span class="p">)</span>
+    <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">html_dir</span> <span class="o">=</span> <span class="n">output_path</span> <span class="o">/</span> <span class="s2">"html"</span>
+    <span class="n">json_dir</span> <span class="o">=</span> <span class="n">output_path</span> <span class="o">/</span> <span class="s2">"json"</span>
+    <span class="n">html_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">json_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_pick_target</span><span class="p">(</span><span class="n">start_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">"webSocketDebuggerUrl"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">target</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"Chrome target did not expose a debugging websocket endpoint."</span><span class="p">)</span>
+
+    <span class="n">existing_pages</span> <span class="o">=</span> <span class="n">_existing_page_files</span><span class="p">(</span><span class="n">json_dir</span><span class="p">,</span> <span class="n">json_prefix</span><span class="p">)</span>
+    <span class="n">merged_by_key</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">merged_output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">merged_output</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">merged_output_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="c1"># Seed from the merged file too, so a missing/pruned data/json page cache never loses prior rows.</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">load_data</span><span class="p">(</span><span class="n">merged_output_path</span><span class="p">):</span>
+            <span class="n">merged_by_key</span><span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)]</span> <span class="o">=</span> <span class="n">row</span>
+    <span class="n">previous_page_keys</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">existing_pages</span><span class="p">:</span>
+        <span class="n">page_rows</span> <span class="o">=</span> <span class="n">load_data</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">previous_page_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">page_rows</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">page_rows</span><span class="p">:</span>
+            <span class="n">merged_by_key</span><span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)]</span> <span class="o">=</span> <span class="n">row</span>
+
+    <span class="n">saved_files</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">existing_pages</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">existing_pages</span> <span class="k">else</span> <span class="mi">1</span>
+    <span class="n">last_page</span> <span class="o">=</span> <span class="n">page_number</span> <span class="o">+</span> <span class="n">pages</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">pages</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">existing_pages</span><span class="p">:</span>
+        <span class="n">previous_html_path</span> <span class="o">=</span> <span class="n">html_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">page_number</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">.html"</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">previous_html_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cannot resume because </span><span class="si">{</span><span class="n">previous_html_path</span><span class="si">}</span><span class="s2"> is missing."</span><span class="p">)</span>
+        <span class="n">next_url</span> <span class="o">=</span> <span class="n">_next_page_url_from_html</span><span class="p">(</span><span class="n">previous_html_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"replace"</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">next_url</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cannot resume because </span><span class="si">{</span><span class="n">previous_html_path</span><span class="si">}</span><span class="s2"> has no Next link."</span><span class="p">)</span>
+        <span class="n">_navigate_to_url</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">],</span> <span class="n">next_url</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Resuming after page </span><span class="si">{</span><span class="n">page_number</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span><span class="si">}</span><span class="s2"> unique rows already saved."</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">_navigate_to_url</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">],</span> <span class="n">start_url</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="p">(</span><span class="n">last_page</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">page_number</span> <span class="o">&lt;=</span> <span class="n">last_page</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">target_rows</span><span class="p">:</span>
+        <span class="n">html</span> <span class="o">=</span> <span class="n">_read_current_html</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">_looks_blocked</span><span class="p">(</span><span class="n">html</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">BlockedError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"GradCafe appears to be blocking, rate-limiting, or challenging this session at page </span><span class="si">{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">. "</span>
+                <span class="s2">"Collection stopped instead of retrying or bypassing the restriction."</span>
+            <span class="p">)</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">scrape_data_from_html_file</span><span class="p">(</span><span class="n">_save_page_html</span><span class="p">(</span><span class="n">page_number</span><span class="p">,</span> <span class="n">html</span><span class="p">,</span> <span class="n">html_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">))</span>
+        <span class="n">current_page_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">previous_page_keys</span> <span class="ow">and</span> <span class="n">current_page_keys</span> <span class="o">==</span> <span class="n">previous_page_keys</span><span class="p">:</span>
+            <span class="n">_advance_to_next_page</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">])</span>
+            <span class="n">html</span> <span class="o">=</span> <span class="n">_read_current_html</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">_looks_blocked</span><span class="p">(</span><span class="n">html</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">BlockedError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"GradCafe appears to be blocking, rate-limiting, or challenging this session at page </span><span class="si">{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">. "</span>
+                    <span class="s2">"Collection stopped instead of retrying or bypassing the restriction."</span>
+                <span class="p">)</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">scrape_data_from_html_file</span><span class="p">(</span><span class="n">_save_page_html</span><span class="p">(</span><span class="n">page_number</span><span class="p">,</span> <span class="n">html</span><span class="p">,</span> <span class="n">html_dir</span><span class="p">,</span> <span class="n">prefix</span><span class="p">))</span>
+            <span class="n">current_page_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
+
+        <span class="n">page_file</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">html_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">.html"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">Path</span><span class="p">(</span><span class="n">page_file</span><span class="p">)</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">missing_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"No rows were found on page </span><span class="si">{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">. The page structure may have changed."</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">previous_page_keys</span> <span class="ow">and</span> <span class="n">current_page_keys</span> <span class="o">==</span> <span class="n">previous_page_keys</span><span class="p">:</span>
+            <span class="n">Path</span><span class="p">(</span><span class="n">page_file</span><span class="p">)</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">missing_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"The browser returned the same applicant page twice; collection stopped before duplicating data."</span><span class="p">)</span>
+
+        <span class="n">saved_files</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_file</span><span class="p">)</span>
+        <span class="n">json_path</span> <span class="o">=</span> <span class="n">json_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">json_prefix</span><span class="si">}{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">.json"</span>
+        <span class="n">save_data</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">json_path</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="n">merged_by_key</span><span class="p">[</span><span class="n">_record_key</span><span class="p">(</span><span class="n">row</span><span class="p">)]</span> <span class="o">=</span> <span class="n">row</span>
+        <span class="n">save_data</span><span class="p">(</span><span class="n">merged_by_key</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">merged_output</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Page </span><span class="si">{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">: saved </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="si">}</span><span class="s2"> applicant records -&gt; </span><span class="si">{</span><span class="n">json_path</span><span class="si">}</span><span class="s2"> "</span>
+            <span class="sa">f</span><span class="s2">"(unique total: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span><span class="si">}</span><span class="s2">)"</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">target_rows</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Target reached: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span><span class="si">}</span><span class="s2"> unique rows collected."</span><span class="p">)</span>
+            <span class="k">break</span>
+        <span class="k">if</span> <span class="n">last_page</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">page_number</span> <span class="o">&gt;=</span> <span class="n">last_page</span><span class="p">:</span>
+            <span class="k">break</span>
+
+        <span class="n">previous_page_keys</span> <span class="o">=</span> <span class="n">current_page_keys</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">PAGE_DELAY_SECONDS</span><span class="p">)</span>  <span class="c1"># polite throttling between page requests</span>
+        <span class="n">_advance_to_next_page</span><span class="p">(</span><span class="n">target</span><span class="p">[</span><span class="s2">"webSocketDebuggerUrl"</span><span class="p">])</span>
+        <span class="n">page_number</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">target_rows</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Stopped with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">merged_by_key</span><span class="p">)</span><span class="si">}</span><span class="s2"> unique rows. Target was </span><span class="si">{</span><span class="n">target_rows</span><span class="si">}</span><span class="s2"> rows."</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">saved_files</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">"Capture GradCafe pages using the browser’s Next button and save parsed JSON; default target is 100,000 rows."</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--start-url"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"https://www.thegradcafe.com/survey"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"The page to begin from."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--pages"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Maximum number of pages to capture in sequence."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--target-rows"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">DEFAULT_TARGET_ROWS</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Target row count before stopping."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--output-dir"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"data"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Base directory for captured HTML and JSON outputs. Subfolders html/ and json/ are used automatically."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--html-prefix"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"gradcafe_page_"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"HTML file prefix."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--json-prefix"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"applicant_data_page"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"JSON file prefix."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--merged-output"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"applicant_data.json"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Incremental merged JSON output path."</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">run_capture_loop</span><span class="p">(</span>
+        <span class="n">start_url</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">start_url</span><span class="p">,</span>
+        <span class="n">pages</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">pages</span><span class="p">,</span>
+        <span class="n">target_rows</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">target_rows</span><span class="p">,</span>
+        <span class="n">output_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_dir</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">html_prefix</span><span class="p">,</span>
+        <span class="n">json_prefix</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">json_prefix</span><span class="p">,</span>
+        <span class="n">merged_output</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">merged_output</span><span class="p">,</span>
+    <span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
