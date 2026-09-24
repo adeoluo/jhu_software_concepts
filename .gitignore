@@ -10,3 +10,5 @@ module_3/__pycache__/
 module_3/data/
 module_3/pull_data.lock
 *.jsonl
+
+.coverage

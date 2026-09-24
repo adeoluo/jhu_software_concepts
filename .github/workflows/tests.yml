@@ -1,0 +1,47 @@
+name: Python tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gradcafe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d gradcafe"
+          --health-interval=10s
+          --health-timeout=5s
+          --retries=5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r module_4/requirements.txt
+
+      - name: Run pytest with coverage
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gradcafe
+        run: |
+          pytest module_4/tests -m "web or buttons or analysis or db or integration" \
+            --cov=module_4/src --cov-report=term-missing --cov-fail-under=100
