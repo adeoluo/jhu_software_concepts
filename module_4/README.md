@@ -6,7 +6,7 @@ Course: Modern Software Concepts in Python (`EN.605.256.82.FA26`)
 
 Repository SSH URL: `git@github.com:adeoluo/jhu_software_concepts.git`
 
-Documentation (Read the Docs): **https://REPLACE-WITH-YOUR-PROJECT.readthedocs.io/**
+Documentation (Read the Docs): <https://adeoluo-jhu-software-concepts.readthedocs.io/en/latest/>
 
 This module is the Module 3 Grad Cafe analysis service (Flask + PostgreSQL) with
 an automated pytest suite at 100% coverage, a GitHub Actions workflow that runs the
